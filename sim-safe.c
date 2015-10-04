@@ -432,7 +432,7 @@ sim_main(void)
       }
       // PRE Assignment END 0
        
-      // LAB 1 START
+      /* ECE552 Assignment 1 - BEGIN CODE */
 
       int reg_with_biggest_stall = 0;
 
@@ -442,7 +442,7 @@ sim_main(void)
               
         if(r_in[j] != DNA && reg_ready [r_in [j]] > sim_num_insn) {
             if ( r_in[j] > reg_with_biggest_stall ) {
-                reg_with_biggest_stall = r_in[j];
+                reg_with_biggest_stall = j;
             }
         }
 
@@ -460,7 +460,7 @@ sim_main(void)
          // after doing a stall, propogate this to all registers
          int r;
          for (r = 0; r < MD_TOTAL_REGS; r++){
-             reg_ready [r_in [r]] -= stalls;
+             reg_ready [r] -= stalls;
          }
 
       }
@@ -473,7 +473,7 @@ sim_main(void)
           reg_ready[r_out[1]] = sim_num_insn + 3;
       }
 
-      // LAB 1 END
+      /* ECE552 Assignment 1 - END CODE */
       
       if (verbose)
 	{
