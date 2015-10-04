@@ -171,7 +171,7 @@ sim_reg_stats(struct stat_sdb_t *sdb)
 		   &sim_num_RAW_hazard_q2, sim_num_RAW_hazard_q2, NULL);
 
   stat_reg_counter(sdb, "sim_RAW_stalls",
-		   "total number of RAW hazard stalls (q2)",
+		   "total number of RAW hazard stalls (q1)",
 		   &sim_RAW_stalls, sim_RAW_stalls, NULL);
 
   stat_reg_formula(sdb, "CPI_from_RAW_hazard_q1",
@@ -433,23 +433,46 @@ sim_main(void)
       // PRE Assignment END 0
        
       // LAB 1 START
+
+      int reg_with_biggest_stall = 0;
+
       int j;  
       for(j = 0; j < 3 ; j++){
+        // if there is a need to stall
+              
         if(r_in[j] != DNA && reg_ready [r_in [j]] > sim_num_insn) {
-            counter_t stalls = reg_ready [r_in [j]] - sim_num_insn;
-            sim_RAW_stalls += stalls;
-            int r;
-            for (r = 0; r < MD_TOTAL_REGS; r++){
-                reg_ready [r_in [j]] -= stalls;
+            if ( r_in[j] > reg_with_biggest_stall ) {
+                reg_with_biggest_stall = r_in[j];
             }
         }
+
       }
+
+      if(r_in[reg_with_biggest_stall] != DNA && reg_ready [r_in [reg_with_biggest_stall]] > sim_num_insn) {
+
+         // +1 to the number of RAW_hazards_q1
+         sim_num_RAW_hazard_q1 += 1;
+
+         // count the number of stalled cycles there will be
+         counter_t stalls = reg_ready [r_in [reg_with_biggest_stall]] - sim_num_insn;
+         sim_RAW_stalls += stalls;
+
+         // after doing a stall, propogate this to all registers
+         int r;
+         for (r = 0; r < MD_TOTAL_REGS; r++){
+             reg_ready [r_in [r]] -= stalls;
+         }
+
+      }
+
       if(r_out[0] != DNA){
           reg_ready[r_out[0]] = sim_num_insn + 3;
       }
+
       if(r_out[1] != DNA){
           reg_ready[r_out[1]] = sim_num_insn + 3;
       }
+
       // LAB 1 END
       
       if (verbose)
