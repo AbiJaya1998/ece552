@@ -65,14 +65,14 @@
 #include "stats.h"
 #include "sim.h"
 
-static counter_t sim_num_loads = 0;
-
 // PRE Assignment 0
-static counter_t reg_ready[MD_TOTAL_REGS];
+static counter_t sim_num_loads = 0;
 static counter_t sim_num_lduh = 0;
 // PRE END Assignment 0
 
 /* ECE552 Assignment 1 - STATS COUNTERS - BEGIN */
+static counter_t reg_ready[MD_TOTAL_REGS];
+
 static counter_t sim_num_RAW_hazard_q1;
 static counter_t sim_num_RAW_hazard_q2;
 
