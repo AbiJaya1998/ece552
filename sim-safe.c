@@ -72,11 +72,13 @@ static counter_t sim_num_lduh = 0;
 
 /* ECE552 Assignment 1 - STATS COUNTERS - BEGIN */
 static counter_t reg_ready[MD_TOTAL_REGS];
+static counter_t reg_ready_q2[MD_TOTAL_REGS];
 
 static counter_t sim_num_RAW_hazard_q1;
 static counter_t sim_num_RAW_hazard_q2;
 
 static counter_t sim_RAW_stalls = 0;
+static counter_t sim_RAW_stalls_q2 = 0;
 /* ECE552 Assignment 1 - STATS COUNTERS - END */
 
 /*
@@ -108,12 +110,12 @@ sim_reg_options(struct opt_odb_t *odb)
 "simplescalar tool set.  Unlike sim-fast, this functional simulator checks\n"
 "for all instruction errors, and the implementation is crafted for clarity\n"
 "rather than speed.\n"
-		 );
+         );
 
   /* instruction limit */
   opt_reg_uint(odb, "-max:inst", "maximum number of inst's to execute",
-	       &max_insts, /* default */0,
-	       /* print */TRUE, /* format */NULL);
+           &max_insts, /* default */0,
+           /* print */TRUE, /* format */NULL);
 
 }
 
@@ -163,24 +165,28 @@ sim_reg_stats(struct stat_sdb_t *sdb)
   /* ECE552 Assignment 1 - BEGIN CODE */
 
   stat_reg_counter(sdb, "sim_num_RAW_hazard_q1",
-		   "total number of RAW hazards (q1)",
-		   &sim_num_RAW_hazard_q1, sim_num_RAW_hazard_q1, NULL);
+           "total number of RAW hazards (q1)",
+           &sim_num_RAW_hazard_q1, sim_num_RAW_hazard_q1, NULL);
 
   stat_reg_counter(sdb, "sim_num_RAW_hazard_q2",
-		   "total number of RAW hazards (q2)",
-		   &sim_num_RAW_hazard_q2, sim_num_RAW_hazard_q2, NULL);
+           "total number of RAW hazards (q2)",
+           &sim_num_RAW_hazard_q2, sim_num_RAW_hazard_q2, NULL);
 
   stat_reg_counter(sdb, "sim_RAW_stalls",
-		   "total number of RAW hazard stalls (q1)",
-		   &sim_RAW_stalls, sim_RAW_stalls, NULL);
+           "total number of RAW hazard stalls (q1)",
+           &sim_RAW_stalls, sim_RAW_stalls, NULL);
+
+  stat_reg_counter(sdb, "sim_RAW_stalls_q2",
+           "total number of RAW hazard stalls (q2)",
+           &sim_RAW_stalls_q2, sim_RAW_stalls_q2, NULL);
 
   stat_reg_formula(sdb, "CPI_from_RAW_hazard_q1",
-		   "CPI from RAW hazard (q1)",
-		   "(sim_num_insn + sim_RAW_stalls) / sim_num_insn" /* ECE552 - MUST ADD YOUR FORMULA */, NULL);
+           "CPI from RAW hazard (q1)",
+           "(sim_num_insn + sim_RAW_stalls) / sim_num_insn", NULL);
 
   stat_reg_formula(sdb, "CPI_from_RAW_hazard_q2",
-		   "CPI from RAW hazard (q2)",
-		   "1" /* ECE552 - MUST ADD YOUR FORMULA */, NULL);
+           "CPI from RAW hazard (q2)",
+           "(sim_num_insn + sim_RAW_stalls_q2) / sim_num_insn", NULL);
 
   /* ECE552 Assignment 1 - END CODE */
 
@@ -204,9 +210,9 @@ sim_init(void)
 
 /* load program into simulated state */
 void
-sim_load_prog(char *fname,		/* program to load */
-	      int argc, char **argv,	/* program arguments */
-	      char **envp)		/* program environment */
+sim_load_prog(char *fname,      /* program to load */
+          int argc, char **argv,    /* program arguments */
+          char **envp)      /* program environment */
 {
   /* load program text and data, set up environment, memory, and regs */
   ld_load_prog(fname, argc, argv, envp, &regs, mem, TRUE);
@@ -217,14 +223,14 @@ sim_load_prog(char *fname,		/* program to load */
 
 /* print simulator-specific configuration information */
 void
-sim_aux_config(FILE *stream)		/* output stream */
+sim_aux_config(FILE *stream)        /* output stream */
 {
   /* nothing currently */
 }
 
 /* dump simulator-specific auxiliary simulator statistics */
 void
-sim_aux_stats(FILE *stream)		/* output stream */
+sim_aux_stats(FILE *stream)     /* output stream */
 {
   /* nada */
 }
@@ -246,93 +252,93 @@ sim_uninit(void)
  */
 
 /* next program counter */
-#define SET_NPC(EXPR)		(regs.regs_NPC = (EXPR))
+#define SET_NPC(EXPR)       (regs.regs_NPC = (EXPR))
 
 /* current program counter */
-#define CPC			(regs.regs_PC)
+#define CPC         (regs.regs_PC)
 
 /* general purpose registers */
-#define GPR(N)			(regs.regs_R[N])
-#define SET_GPR(N,EXPR)		(regs.regs_R[N] = (EXPR))
+#define GPR(N)          (regs.regs_R[N])
+#define SET_GPR(N,EXPR)     (regs.regs_R[N] = (EXPR))
 
 #define DNA (0)
 
 #if defined(TARGET_PISA)
 
 /* general register dependence decoders */
-#define DGPR(N)			(N)
-#define DGPR_D(N)		((N) &~1)
+#define DGPR(N)         (N)
+#define DGPR_D(N)       ((N) &~1)
 
 /* floating point register dependence decoders */
-#define DFPR_L(N)		(((N)+32)&~1)
-#define DFPR_F(N)		(((N)+32)&~1)
-#define DFPR_D(N)		(((N)+32)&~1)
+#define DFPR_L(N)       (((N)+32)&~1)
+#define DFPR_F(N)       (((N)+32)&~1)
+#define DFPR_D(N)       (((N)+32)&~1)
 
 /* miscellaneous register dependence decoders */
-#define DHI			(0+32+32)
-#define DLO			(1+32+32)
-#define DFCC			(2+32+32)
-#define DTMP			(3+32+32)
+#define DHI         (0+32+32)
+#define DLO         (1+32+32)
+#define DFCC            (2+32+32)
+#define DTMP            (3+32+32)
 
 /* floating point registers, L->word, F->single-prec, D->double-prec */
-#define FPR_L(N)		(regs.regs_F.l[(N)])
-#define SET_FPR_L(N,EXPR)	(regs.regs_F.l[(N)] = (EXPR))
-#define FPR_F(N)		(regs.regs_F.f[(N)])
-#define SET_FPR_F(N,EXPR)	(regs.regs_F.f[(N)] = (EXPR))
-#define FPR_D(N)		(regs.regs_F.d[(N) >> 1])
-#define SET_FPR_D(N,EXPR)	(regs.regs_F.d[(N) >> 1] = (EXPR))
+#define FPR_L(N)        (regs.regs_F.l[(N)])
+#define SET_FPR_L(N,EXPR)   (regs.regs_F.l[(N)] = (EXPR))
+#define FPR_F(N)        (regs.regs_F.f[(N)])
+#define SET_FPR_F(N,EXPR)   (regs.regs_F.f[(N)] = (EXPR))
+#define FPR_D(N)        (regs.regs_F.d[(N) >> 1])
+#define SET_FPR_D(N,EXPR)   (regs.regs_F.d[(N) >> 1] = (EXPR))
 
 /* miscellaneous register accessors */
-#define SET_HI(EXPR)		(regs.regs_C.hi = (EXPR))
-#define HI			(regs.regs_C.hi)
-#define SET_LO(EXPR)		(regs.regs_C.lo = (EXPR))
-#define LO			(regs.regs_C.lo)
-#define FCC			(regs.regs_C.fcc)
-#define SET_FCC(EXPR)		(regs.regs_C.fcc = (EXPR))
+#define SET_HI(EXPR)        (regs.regs_C.hi = (EXPR))
+#define HI          (regs.regs_C.hi)
+#define SET_LO(EXPR)        (regs.regs_C.lo = (EXPR))
+#define LO          (regs.regs_C.lo)
+#define FCC         (regs.regs_C.fcc)
+#define SET_FCC(EXPR)       (regs.regs_C.fcc = (EXPR))
 
 #elif defined(TARGET_ALPHA)
 
 /* floating point registers, L->word, F->single-prec, D->double-prec */
-#define FPR_Q(N)		(regs.regs_F.q[N])
-#define SET_FPR_Q(N,EXPR)	(regs.regs_F.q[N] = (EXPR))
-#define FPR(N)			(regs.regs_F.d[(N)])
-#define SET_FPR(N,EXPR)		(regs.regs_F.d[(N)] = (EXPR))
+#define FPR_Q(N)        (regs.regs_F.q[N])
+#define SET_FPR_Q(N,EXPR)   (regs.regs_F.q[N] = (EXPR))
+#define FPR(N)          (regs.regs_F.d[(N)])
+#define SET_FPR(N,EXPR)     (regs.regs_F.d[(N)] = (EXPR))
 
 /* miscellaneous register accessors */
-#define FPCR			(regs.regs_C.fpcr)
-#define SET_FPCR(EXPR)		(regs.regs_C.fpcr = (EXPR))
-#define UNIQ			(regs.regs_C.uniq)
-#define SET_UNIQ(EXPR)		(regs.regs_C.uniq = (EXPR))
+#define FPCR            (regs.regs_C.fpcr)
+#define SET_FPCR(EXPR)      (regs.regs_C.fpcr = (EXPR))
+#define UNIQ            (regs.regs_C.uniq)
+#define SET_UNIQ(EXPR)      (regs.regs_C.uniq = (EXPR))
 
 #else
 #error No ISA target defined...
 #endif
 
 /* precise architected memory state accessor macros */
-#define READ_BYTE(SRC, FAULT)						\
+#define READ_BYTE(SRC, FAULT)                       \
   ((FAULT) = md_fault_none, addr = (SRC), MEM_READ_BYTE(mem, addr))
-#define READ_HALF(SRC, FAULT)						\
+#define READ_HALF(SRC, FAULT)                       \
   ((FAULT) = md_fault_none, addr = (SRC), MEM_READ_HALF(mem, addr))
-#define READ_WORD(SRC, FAULT)						\
+#define READ_WORD(SRC, FAULT)                       \
   ((FAULT) = md_fault_none, addr = (SRC), MEM_READ_WORD(mem, addr))
 #ifdef HOST_HAS_QWORD
-#define READ_QWORD(SRC, FAULT)						\
+#define READ_QWORD(SRC, FAULT)                      \
   ((FAULT) = md_fault_none, addr = (SRC), MEM_READ_QWORD(mem, addr))
 #endif /* HOST_HAS_QWORD */
 
-#define WRITE_BYTE(SRC, DST, FAULT)					\
+#define WRITE_BYTE(SRC, DST, FAULT)                 \
   ((FAULT) = md_fault_none, addr = (DST), MEM_WRITE_BYTE(mem, addr, (SRC)))
-#define WRITE_HALF(SRC, DST, FAULT)					\
+#define WRITE_HALF(SRC, DST, FAULT)                 \
   ((FAULT) = md_fault_none, addr = (DST), MEM_WRITE_HALF(mem, addr, (SRC)))
-#define WRITE_WORD(SRC, DST, FAULT)					\
+#define WRITE_WORD(SRC, DST, FAULT)                 \
   ((FAULT) = md_fault_none, addr = (DST), MEM_WRITE_WORD(mem, addr, (SRC)))
 #ifdef HOST_HAS_QWORD
-#define WRITE_QWORD(SRC, DST, FAULT)					\
+#define WRITE_QWORD(SRC, DST, FAULT)                    \
   ((FAULT) = md_fault_none, addr = (DST), MEM_WRITE_QWORD(mem, addr, (SRC)))
 #endif /* HOST_HAS_QWORD */
 
 /* system call handler macro */
-#define SYSCALL(INST)	sys_syscall(&regs, mem_access, mem, INST, TRUE)
+#define SYSCALL(INST)   sys_syscall(&regs, mem_access, mem, INST, TRUE)
 
 /* start simulation, program loaded, processor precise state initialized */
 void
@@ -356,7 +362,7 @@ sim_main(void)
   /* check for DLite debugger entry condition */
   if (dlite_check_break(regs.regs_PC, /* !access */0, /* addr */0, 0, 0))
     dlite_main(regs.regs_PC - sizeof(md_inst_t),
-	       regs.regs_PC, sim_num_insn, &regs, mem);
+           regs.regs_PC, sim_num_insn, &regs, mem);
 
   while (TRUE)
     {
@@ -385,32 +391,32 @@ sim_main(void)
       /* execute the instruction */
 
       switch (op)
-	{
-#define DEFINST(OP,MSK,NAME,OPFORM,RES,FLAGS,O1,O2,I1,I2,I3)		\
-	case OP:							\
+    {
+#define DEFINST(OP,MSK,NAME,OPFORM,RES,FLAGS,O1,O2,I1,I2,I3)        \
+    case OP:                            \
           r_out[0] = (O1); r_out[1] = (O2);                             \
           r_in[0] = (I1); r_in[1] = (I2); r_in[2] = (I3);               \
-          SYMCAT(OP,_IMPL);						\
+          SYMCAT(OP,_IMPL);                     \
           break;
-#define DEFLINK(OP,MSK,NAME,MASK,SHIFT)					\
-        case OP:							\
+#define DEFLINK(OP,MSK,NAME,MASK,SHIFT)                 \
+        case OP:                            \
           panic("attempted to execute a linking opcode");
 #define CONNECT(OP)
-#define DECLARE_FAULT(FAULT)						\
-	  { fault = (FAULT); break; }
+#define DECLARE_FAULT(FAULT)                        \
+      { fault = (FAULT); break; }
 #include "machine.def"
-	default:
-	  panic("attempted to execute a bogus opcode");
+    default:
+      panic("attempted to execute a bogus opcode");
       }
 
       if (fault != md_fault_none)
-	fatal("fault (%d) detected @ 0x%08p", fault, regs.regs_PC);
+    fatal("fault (%d) detected @ 0x%08p", fault, regs.regs_PC);
 
       if ( (MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_LOAD) ) {
           sim_num_loads++;
       }
 
-      // PRE Assignment START 0
+      /* ECE552 PreAssignment - BEGIN CODE */
       int i;  
       for(i = 0; i < 3 ; i++){
         if(r_in[i] != DNA && reg_ready [r_in [i]] > sim_num_insn) {
@@ -430,31 +436,32 @@ sim_main(void)
             reg_ready[r_out[1]] = sim_num_insn + 2;
         }
       }
-      // PRE Assignment END 0
+      /* ECE552 PreAssignment - END CODE */
        
       /* ECE552 Assignment 1 - BEGIN CODE */
-
-      int reg_with_biggest_stall = 0;
+        
+      /**** Lab 1 q1 Logic  *****/
+      counter_t biggest_stall = -1;
 
       int j;  
       for(j = 0; j < 3 ; j++){
         // if there is a need to stall
               
         if(r_in[j] != DNA && reg_ready [r_in [j]] > sim_num_insn) {
-            if ( r_in[j] > reg_with_biggest_stall ) {
-                reg_with_biggest_stall = j;
+            if ((reg_ready [r_in [j]] - sim_num_insn) > biggest_stall) {
+                biggest_stall = reg_ready [r_in [j]] - sim_num_insn;
             }
         }
 
       }
-
-      if(r_in[reg_with_biggest_stall] != DNA && reg_ready [r_in [reg_with_biggest_stall]] > sim_num_insn) {
+      //This means that there were stalls
+      if(biggest_stall > -1) {
 
          // +1 to the number of RAW_hazards_q1
          sim_num_RAW_hazard_q1 += 1;
 
          // count the number of stalled cycles there will be
-         counter_t stalls = reg_ready [r_in [reg_with_biggest_stall]] - sim_num_insn;
+         counter_t stalls = biggest_stall;
          sim_RAW_stalls += stalls;
 
          // after doing a stall, propogate this to all registers
@@ -473,31 +480,85 @@ sim_main(void)
           reg_ready[r_out[1]] = sim_num_insn + 3;
       }
 
+      /**** Lab 1 q2 Logic  *****/
+      
+      int k;
+      biggest_stall = -1;
+      for (k = 0; k < 3; k++) {
+          if(r_in[k] != DNA && reg_ready_q2[r_in[k]] > sim_num_insn) {
+              if((k == 0) && (MD_OP_FLAGS(op) & F_MEM) &&
+               (MD_OP_FLAGS(op) & F_STORE)) {
+                //If we have store, don't need to stall at all regardless of load or operation
+                continue;
+              }
+              if((reg_ready_q2[r_in[k]] - sim_num_insn) > biggest_stall) {
+                  biggest_stall = reg_ready_q2[r_in[k]] - sim_num_insn;
+              }
+          }
+      }
+      
+      if(biggest_stall > -1) {
+        // +1 to the number of RAW_hazards_q1
+         sim_num_RAW_hazard_q2 += 1;
+
+         // count the number of stalled cycles there will be
+         counter_t stalls = biggest_stall;
+         sim_RAW_stalls_q2 += stalls;
+
+         // after doing a stall, propogate this to all registers
+         int r;
+         for (r = 0; r < MD_TOTAL_REGS; r++){
+             reg_ready_q2[r] -= stalls;
+         }
+      }
+      
+      //case 1 - load 
+      
+      if((MD_OP_FLAGS(op) & F_MEM) && (MD_OP_FLAGS(op) & F_LOAD)) {
+          if(r_out[0] != DNA) {
+              reg_ready_q2[r_out[0]] = sim_num_insn + 4;
+          }
+          if(r_out[1] != DNA) {
+              reg_ready_q2[r_out[1]] = sim_num_insn + 4;
+          }
+      }
+
+      //case 2 - operations (ie. add, sub, div, etc.)
+
+      else {
+          if(r_out[0] != DNA) {
+              reg_ready_q2[r_out[0]] = sim_num_insn + 2;
+          }
+          if(r_out[1] != DNA) {
+              reg_ready_q2[r_out[1]] = sim_num_insn + 2;
+          }
+      }
+      
       /* ECE552 Assignment 1 - END CODE */
       
       if (verbose)
-	{
-	  myfprintf(stderr, "%10n [xor: 0x%08x] @ 0x%08p: ",
-		    sim_num_insn, md_xor_regs(&regs), regs.regs_PC);
-	  md_print_insn(inst, regs.regs_PC, stderr);
-	  if (MD_OP_FLAGS(op) & F_MEM)
-	    myfprintf(stderr, "  mem: 0x%08p", addr);
-	  fprintf(stderr, "\n");
-	  /* fflush(stderr); */
-	}
+    {
+      myfprintf(stderr, "%10n [xor: 0x%08x] @ 0x%08p: ",
+            sim_num_insn, md_xor_regs(&regs), regs.regs_PC);
+      md_print_insn(inst, regs.regs_PC, stderr);
+      if (MD_OP_FLAGS(op) & F_MEM)
+        myfprintf(stderr, "  mem: 0x%08p", addr);
+      fprintf(stderr, "\n");
+      /* fflush(stderr); */
+    }
 
       if (MD_OP_FLAGS(op) & F_MEM)
-	{
-	  sim_num_refs++;
-	  if (MD_OP_FLAGS(op) & F_STORE)
-	    is_write = TRUE;
-	}
+    {
+      sim_num_refs++;
+      if (MD_OP_FLAGS(op) & F_STORE)
+        is_write = TRUE;
+    }
 
       /* check for DLite debugger entry condition */
       if (dlite_check_break(regs.regs_NPC,
-			    is_write ? ACCESS_WRITE : ACCESS_READ,
-			    addr, sim_num_insn, sim_num_insn))
-	dlite_main(regs.regs_PC, regs.regs_NPC, sim_num_insn, &regs, mem);
+                is_write ? ACCESS_WRITE : ACCESS_READ,
+                addr, sim_num_insn, sim_num_insn))
+    dlite_main(regs.regs_PC, regs.regs_NPC, sim_num_insn, &regs, mem);
 
       /* go to the next instruction */
       regs.regs_PC = regs.regs_NPC;
@@ -505,6 +566,6 @@ sim_main(void)
 
       /* finish early? */
       if (max_insts && sim_num_insn >= max_insts)
-	return;
+    return;
     }
 }
