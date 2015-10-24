@@ -17,6 +17,7 @@ UINT32 getPredictionIndex(UINT32 PC) {
 }
 
 // Lab 2 - Custom Code
+// get prediction from a 2bit saturating counter which is a 1d array with a value of 0-3 defined at the top
 bool makePrediction(UINT32 index, int* table) {
 
     switch(table[index]){
@@ -33,6 +34,7 @@ bool makePrediction(UINT32 index, int* table) {
     };
 }
 
+//update a 2 bit prediction counter which is a 1d array with a value of 0-3 defined at the top
 void updatePrediction(bool resolveDir, UINT32 index, int* table) {
     
     if(NOT_TAKEN == resolveDir &&
@@ -73,45 +75,72 @@ void UpdatePredictor_2bitsat(UINT32 PC, bool resolveDir, bool predDir, UINT32 br
 // 2level
 /////////////////////////////////////////////////////////////
 
-static char bht[512];
-static char pht[8][64];
+static int bht[512];
+static int pht[8][64];
 
 UINT32 getBHTIndex(UINT32 PC) {
-    return PC & 0xff8;   
+    return PC & 0xff8 >> 3;   
 }
 
 UINT32 getPHTIndex(UINT32 PC) {
     return PC & 0x7;   
 }
 
-char get_6bit_history(UINT32 index) {
+int get_6bit_history(UINT32 index) {
     return bht[index] & 0x3f;
 }
 
-char get_pht_value(UINT32 row, UINT32 col) {
-    
-}
+//get a prediction from the 2 level predictor
+int make_two_level_prediction(UINT32 PC) {
 
-int two_level_prediction(UINT32 PC) {
-
+    //get table addresses
     UINT32 bht_index = getBHTIndex(PC);
 
     UINT32 pht_row = getPHTIndex(PC);
     UINT32 pht_column = get_6bit_history(bht_index);
 
+    return makePrediction(pht_column, pht[pht_row]);
+
+}
+
+// update a Branch history table
+void record_history(UINT32 index, bool resolveDir, int* table) {
+    table[index] = table[index] << 1 | resolveDir;
+}
+
+// update the 2 level predictor
+void update_two_level_prediction(UINT32 PC, bool resolveDir) {
+
+    // get table addresses
+    UINT32 bht_index = getBHTIndex(PC);
+
+    UINT32 pht_row = getPHTIndex(PC);
+    UINT32 pht_column = get_6bit_history(bht_index);
+
+    // update the pht
+    updatePrediction(resolveDir, pht_column, pht[pht_row]);
+
+    //update the bht
+    record_history(bht_index, resolveDir, bht);
 }
 
 void InitPredictor_2level() {
+    int i;
 
+    int* tmp_pht = (int*)pht; // temperary pointer to the pht block of memory
+
+    for (i = 0; i < 512; i++){
+        bht[i] = 0;
+        *tmp_pht++ = WEAKLY_NOT_TAKEN;
+    }
 }
 
 bool GetPrediction_2level(UINT32 PC) {
-
-  return NOT_TAKEN;
+    return make_two_level_prediction(PC);
 }
 
 void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-
+    update_two_level_prediction(PC, resolveDir);
 }
 
 /////////////////////////////////////////////////////////////
