@@ -17,10 +17,9 @@ UINT32 getPredictionIndex(UINT32 PC) {
 }
 
 // Lab 2 - Custom Code
-bool makePrediction(UINT32 PC) {
-    UINT32 index = getPredictionIndex(PC);
+bool makePrediction(UINT32 index, int* table) {
 
-    switch(predictionTable[index]){
+    switch(table[index]){
         case STRONGLY_NOT_TAKEN:
         case WEAKLY_NOT_TAKEN:
             return NOT_TAKEN;
@@ -34,16 +33,15 @@ bool makePrediction(UINT32 PC) {
     };
 }
 
-void updatePrediction(bool resolveDir, UINT32 PC) {
-    UINT32 index = getPredictionIndex(PC);   
+void updatePrediction(bool resolveDir, UINT32 index, int* table) {
     
     if(NOT_TAKEN == resolveDir &&
-       STRONGLY_NOT_TAKEN != predictionTable[index]){
-        predictionTable[index]--;
+       STRONGLY_NOT_TAKEN != table[index]){
+        table[index]--;
     }
     else if(TAKEN == resolveDir &&
-       STRONGLY_TAKEN != predictionTable[index]){
-        predictionTable[index]++;
+       STRONGLY_TAKEN != table[index]){
+        table[index]++;
     }   
 }
 
@@ -56,16 +54,52 @@ void InitPredictor_2bitsat() {
 }
 
 bool GetPrediction_2bitsat(UINT32 PC) {
-    return makePrediction(PC);
+
+    UINT32 index = getPredictionIndex(PC);
+
+    return makePrediction(index, predictionTable);
+
 }
 
 void UpdatePredictor_2bitsat(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
-    updatePrediction(resolveDir, PC);
+
+    UINT32 index = getPredictionIndex(PC);   
+
+    updatePrediction(resolveDir, index, predictionTable);
+
 }
 
 /////////////////////////////////////////////////////////////
 // 2level
 /////////////////////////////////////////////////////////////
+
+static char bht[512];
+static char pht[8][64];
+
+UINT32 getBHTIndex(UINT32 PC) {
+    return PC & 0xff8;   
+}
+
+UINT32 getPHTIndex(UINT32 PC) {
+    return PC & 0x7;   
+}
+
+char get_6bit_history(UINT32 index) {
+    return bht[index] & 0x3f;
+}
+
+char get_pht_value(UINT32 row, UINT32 col) {
+    
+}
+
+int two_level_prediction(UINT32 PC) {
+
+    UINT32 bht_index = getBHTIndex(PC);
+
+    UINT32 pht_row = getPHTIndex(PC);
+    UINT32 pht_column = get_6bit_history(bht_index);
+
+}
 
 void InitPredictor_2level() {
 
@@ -73,7 +107,7 @@ void InitPredictor_2level() {
 
 bool GetPrediction_2level(UINT32 PC) {
 
-  return TAKEN;
+  return NOT_TAKEN;
 }
 
 void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
@@ -90,7 +124,7 @@ void InitPredictor_openend() {
 
 bool GetPrediction_openend(UINT32 PC) {
 
-  return TAKEN;
+  return NOT_TAKEN;
 }
 
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
