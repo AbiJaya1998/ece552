@@ -1,10 +1,12 @@
 #include "predictor.h"
 #include "assert.h"
+#include "math.h"
 
 #define STRONGLY_NOT_TAKEN 0
 #define WEAKLY_NOT_TAKEN 1
 #define WEAKLY_TAKEN 2
 #define STRONGLY_TAKEN 3
+
 
 /////////////////////////////////////////////////////////////
 // 2bitsat
@@ -147,8 +149,38 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 // openend
 /////////////////////////////////////////////////////////////
 
-void InitPredictor_openend() {
+/***********************************************************
+ * ONE Level predictor constants and structures
+ **********************************************************/
+const int HISTORY_1LVL_SIZE = 6;
+const int PHT_1LVL_SIZE = pow(2, HISTORY_1LVL_SIZE);
 
+static int oe_1lvl_bht;
+static int oe_1lvl_pht[PHT_1LVL_SIZE];
+
+/*********************************************************
+ * TWO Level predictor constants and structures
+ * ******************************************************/
+
+const int HISTORY_2LVL_SIZE = 6;
+const int BHT_2LVL_SIZE = 512;
+const int PHT_2LVL_COL = pow(2, HISTORY_2LVL_SIZE);
+const int PHT_2LVL_ROW = 8;
+
+static int oe_2lvl_bht[BHT_2LVL_SIZE];
+static int oe_2lvl_pht[PHT_2LVL_ROW][PHT_2LVL_COL];
+
+UINT32 maskAndShift(UINT32 src, UINT32 bitmask, UINT32 rightOffset) {
+    return src & bitmask >> rightOffset;   
+}
+
+void InitPredictor_openend() {
+    //Initialize 2-Level Predictor
+    int i;
+    int *tmp_pht = (int *)pht;
+    //Initialize 1-Level Predictor
+    
+    
 }
 
 bool GetPrediction_openend(UINT32 PC) {
