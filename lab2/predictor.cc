@@ -181,6 +181,22 @@ static int oe_2lvl_bht[BHT_2LVL_SIZE];
 static int oe_2lvl_pht[PHT_2LVL_ROW][PHT_2LVL_COL];
 
 /*********************************************************
+ * Loop predictor constants and structures
+ * *******************************************************/
+const UINT32 LOOP_TABLE_SIZE = 32;
+const UINT32 LOOP_COUNTER_MASK = 0x1f;
+const UINT32 LOOP_COUNTER_OFFSET = 0;
+const UINT32 COUNTER_MASK = 0xffffffff;
+typedef struct {
+    //for each local branch, we are storing the loop count as a signed integer
+    // positive - TAKEN
+    // negative - NOT TAKEN
+    int loop_count;
+    int curr_count;
+}LoopCount;
+
+static LoopCount loop_table[LOOP_TABLE_SIZE];
+/*********************************************************
  * Predictor Selector 
  * ******************************************************/
 
@@ -188,6 +204,7 @@ static int oe_2lvl_pht[PHT_2LVL_ROW][PHT_2LVL_COL];
 enum {
     ONELVL,
     TWOLVL,
+    LOOP,
     NUM_PREDICTORS
 };
 
@@ -206,6 +223,63 @@ UINT32 maskAndShift(UINT32 src, UINT32 bitmask, UINT32 rightOffset) {
 /******************************************** 
  * OUR PREDICTOR FUNCTIONS 
  * *****************************************/
+/********** LOOP PREDICTOR ****************/
+int GetLoopPrediction(UINT32 PC) {
+    int loop_index = maskAndShift(PC, LOOP_COUNTER_MASK, LOOP_COUNTER_OFFSET);
+
+    if(loop_table[loop_index].loop_count >= 0){
+        if(loop_table[loop_index].curr_count < loop_table[loop_index].loop_count) {
+            return TAKEN;
+        }
+
+        return NOT_TAKEN;
+    }
+    //loop_count is negative
+    else{
+        if(loop_table[loop_index].curr_count > loop_table[loop_index].loop_count) {
+            return NOT_TAKEN;
+        }
+
+        return TAKEN;
+    }
+}
+
+void UpdateLoopPrediction(UINT32 PC, bool resolveDir) {
+   int loop_index = maskAndShift(PC, LOOP_COUNTER_MASK, LOOP_COUNTER_OFFSET);
+
+   int loop_count = loop_table[loop_index].loop_count;
+   int curr_count = loop_table[loop_index].curr_count;
+
+   if(TAKEN == resolveDir) {
+       if(curr_count >= 0){
+           curr_count++;
+       }
+       else{
+           //We're going the opposite direction
+           loop_count = curr_count;
+           curr_count = 0;
+       }
+       if(curr_count > loop_count){
+           loop_count = curr_count;
+       }
+   }
+   else{
+       if(curr_count <= 0){
+           curr_count--;
+       }
+       else{
+           //We're going the opposite direction
+           loop_count = curr_count;
+           curr_count = 0;  
+       }
+       if(curr_count < loop_count) {
+           loop_count = curr_count;
+       }
+   }
+
+   loop_table[loop_index].loop_count = loop_count;
+   loop_table[loop_index].curr_count = curr_count;
+}
 
 /********** 1 LVL PREDICTOR ***************/
 int Get1LvlPrediction(UINT32 PC) {
@@ -247,6 +321,7 @@ int choosePrediction(UINT32 PC) {
     /******* ADD NEW PREDICTOR OPERATIONS HERE *********/
     strk.prediction[ONELVL] = Get1LvlPrediction(PC);
     strk.prediction[TWOLVL] = Get2LvlPrediction(PC);
+    strk.prediction[LOOP] = GetLoopPrediction(PC);
 
     int max_index = 0;
 
@@ -298,6 +373,7 @@ bool GetPrediction_openend(UINT32 PC) {
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
     Update1LvlPrediction(PC, resolveDir);
     Update2LvlPrediction(PC, resolveDir);
+    UpdateLoopPrediction(PC, resolveDir);
     UpdateChooser(resolveDir);
 }
 
