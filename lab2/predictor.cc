@@ -21,7 +21,6 @@ UINT32 getPredictionIndex(UINT32 PC) {
 // Lab 2 - Custom Code
 // get prediction from a 2bit saturating counter which is a 1d array with a value of 0-3 defined at the top
 bool makePrediction(UINT32 index, int* table) {
-
     switch(table[index]){
         case STRONGLY_NOT_TAKEN:
         case WEAKLY_NOT_TAKEN:
@@ -149,6 +148,18 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 // openend
 /////////////////////////////////////////////////////////////
 
+/**********************************************************
+ * Perceptron learning predictor
+ * ********************************************************/
+const UINT32 PERCEPTRON_ROW = 512;
+const UINT32 PERCEPTRON_COL = 11;
+const UINT32 P_HISTORY_MASK = 0x3ff;
+const UINT32 P_HISTORY_OFFSET = 0;
+
+static int percep_table[PERCEPTRON_ROW][PERCEPTRON_COL];
+static bool p_hist[11];
+
+
 /***********************************************************
  * ONE Level predictor constants and structures
  **********************************************************/
@@ -164,17 +175,17 @@ static int oe_1lvl_pht[PHT_1LVL_SIZE];
  * TWO Level predictor constants and structures
  * ******************************************************/
 
-const int HISTORY_2LVL_SIZE = 6;
+const int HISTORY_2LVL_SIZE = 10;
 const int BHT_2LVL_SIZE = 512;
 const int PHT_2LVL_COL = pow(2, HISTORY_2LVL_SIZE);
-const int PHT_2LVL_ROW = 8;
-const UINT32 BHT_2LVL_MASK = 0xff8;
-const UINT32 BHT_2LVL_OFFSET = 3;
+const UINT32 BHT_2LVL_MASK = 0x3fd;
+const UINT32 BHT_2LVL_OFFSET = 5;
 
-const UINT32 PHT_2LVL_MASK = 0x7;
+const int PHT_2LVL_ROW = pow(2,BHT_2LVL_OFFSET);
+const UINT32 PHT_2LVL_MASK = 0x1f;
 const UINT32 PHT_2LVL_OFFSET = 0;
 
-const UINT32 HISTORY_MASK = 0x3f;
+const UINT32 HISTORY_MASK = 0x3ff;
 const UINT32 HISTORY_OFFSET = 0;
 
 static int oe_2lvl_bht[BHT_2LVL_SIZE];
@@ -183,8 +194,8 @@ static int oe_2lvl_pht[PHT_2LVL_ROW][PHT_2LVL_COL];
 /*********************************************************
  * Loop predictor constants and structures
  * *******************************************************/
-const UINT32 LOOP_TABLE_SIZE = 32;
-const UINT32 LOOP_COUNTER_MASK = 0x1f;
+const UINT32 LOOP_TABLE_SIZE = 1024;
+const UINT32 LOOP_COUNTER_MASK = 0x3ff;
 const UINT32 LOOP_COUNTER_OFFSET = 0;
 const UINT32 COUNTER_MASK = 0xffffffff;
 typedef struct {
@@ -196,6 +207,8 @@ typedef struct {
 }LoopCount;
 
 static LoopCount loop_table[LOOP_TABLE_SIZE];
+static int counter_table[LOOP_TABLE_SIZE];
+
 /*********************************************************
  * Predictor Selector 
  * ******************************************************/
@@ -203,8 +216,7 @@ static LoopCount loop_table[LOOP_TABLE_SIZE];
 /********* ENUM DEFINITION OF ALL OUR PREDICTORS ********/ 
 enum {
     ONELVL,
-    TWOLVL,
-    LOOP,
+    PERCEPTRON,
     NUM_PREDICTORS
 };
 
@@ -223,6 +235,65 @@ UINT32 maskAndShift(UINT32 src, UINT32 bitmask, UINT32 rightOffset) {
 /******************************************** 
  * OUR PREDICTOR FUNCTIONS 
  * *****************************************/
+/****** Perceptron Predictor Functions ******/
+
+int GetPerceptronPrediction(UINT32 PC) {
+    int row_index = PC % PERCEPTRON_ROW;
+    int j, weight_sum = 0;
+    for(j = 1; j < PERCEPTRON_COL; j++){
+        if(p_hist[j]){
+            //taken in global history
+            weight_sum += percep_table[row_index][j];
+        }
+        else{
+            weight_sum += -1*(percep_table[row_index][j]);
+        }
+    }
+    int output = percep_table[row_index][0] + weight_sum;
+    return (output >= 0)?TAKEN:NOT_TAKEN;
+}
+
+void UpdatePerceptronPredictor(UINT32 PC, bool resolveDir, bool predDir) {
+    int i = PC % PERCEPTRON_ROW;
+    if(resolveDir != predDir){
+        if(resolveDir == TAKEN){
+            percep_table[i][0] += 1; 
+        }
+        else{
+            percep_table[i][0] += -1; 
+        }
+        int j = 1;
+        for(; j < PERCEPTRON_COL; j++){
+            if(resolveDir == p_hist[j]){
+                percep_table[i][j] += 1;
+            }
+            else{
+                percep_table[i][j] += -1;
+            }
+        }
+    }
+
+    int k;
+
+    for (k = 1; k < PERCEPTRON_COL-1; k++){
+        p_hist[k] = p_hist[k+1];
+    }
+    p_hist[k] = resolveDir;
+}
+
+/****** Global 2 Bit Saturated Counter******/
+int GetSaturatedCounterPrediction(UINT32 PC) {
+    int counter_index = maskAndShift(PC, LOOP_COUNTER_MASK, LOOP_COUNTER_OFFSET);
+
+    return makePrediction(counter_index, counter_table);
+}
+
+void UpdateSaturatedCounterPrediction(UINT32 PC, bool resolveDir){
+    int counter_index = maskAndShift(PC, LOOP_COUNTER_MASK, LOOP_COUNTER_OFFSET);
+    
+    updatePrediction(resolveDir, counter_index, counter_table);
+}
+
 /********** LOOP PREDICTOR ****************/
 int GetLoopPrediction(UINT32 PC) {
     int loop_index = maskAndShift(PC, LOOP_COUNTER_MASK, LOOP_COUNTER_OFFSET);
@@ -320,9 +391,10 @@ void Update2LvlPrediction(UINT32 PC, bool resolveDir){
 int choosePrediction(UINT32 PC) {
     /******* ADD NEW PREDICTOR OPERATIONS HERE *********/
     strk.prediction[ONELVL] = Get1LvlPrediction(PC);
-    strk.prediction[TWOLVL] = Get2LvlPrediction(PC);
-    strk.prediction[LOOP] = GetLoopPrediction(PC);
-
+    //strk.prediction[TWOLVL] = Get2LvlPrediction(PC);
+    strk.prediction[PERCEPTRON] = GetPerceptronPrediction(PC);
+    //strk.prediction[LOOP] = GetLoopPrediction(PC);
+    //strk.prediction[SAT_COUNT] = GetSaturatedCounterPrediction(PC);
     int max_index = 0;
 
     int i = 0;
@@ -341,8 +413,8 @@ void UpdateChooser(bool resolveDir) {
         if(strk.prediction[i] == (int)resolveDir){
             strk.streak[i]++;
         }
-        else{
-            strk.streak[i] = 0;
+        else if(strk.streak[i] > 0){
+            strk.streak[i]--;
         }
     }
 }
@@ -363,6 +435,11 @@ void InitPredictor_openend() {
     for(i = 0; i < PHT_2LVL_ROW * PHT_2LVL_COL; i++) {
         *tmp_pht++ = WEAKLY_NOT_TAKEN;
     }
+
+    //Update the saturated counter
+    for(i = 0; i < LOOP_TABLE_SIZE; i++){
+        counter_table[i] = WEAKLY_NOT_TAKEN;
+    }
 }
 
 bool GetPrediction_openend(UINT32 PC) {
@@ -372,8 +449,10 @@ bool GetPrediction_openend(UINT32 PC) {
 
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
     Update1LvlPrediction(PC, resolveDir);
-    Update2LvlPrediction(PC, resolveDir);
-    UpdateLoopPrediction(PC, resolveDir);
+    //Update2LvlPrediction(PC, resolveDir);
+    //UpdateLoopPrediction(PC, resolveDir);
+    //UpdateSaturatedCounterPrediction(PC, resolveDir);
+    UpdatePerceptronPredictor(PC, resolveDir, predDir);
     UpdateChooser(resolveDir);
 }
 
