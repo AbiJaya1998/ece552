@@ -151,21 +151,21 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 /**********************************************************
  * Perceptron learning predictor
  * ********************************************************/
-const UINT32 PERCEPTRON_ROW = 512;
-const UINT32 PERCEPTRON_COL = 11;
-const UINT32 P_HISTORY_MASK = 0x3ff;
+const UINT32 PERCEPTRON_ROW = 64;
+const UINT32 PERCEPTRON_COL = 6;
+const UINT32 P_HISTORY_MASK = 0x3f;
 const UINT32 P_HISTORY_OFFSET = 0;
 
 static int percep_table[PERCEPTRON_ROW][PERCEPTRON_COL];
-static bool p_hist[11];
+static bool p_hist[PERCEPTRON_COL];
 
 
 /***********************************************************
  * ONE Level predictor constants and structures
  **********************************************************/
-const int HISTORY_1LVL_SIZE = 12;
+const int HISTORY_1LVL_SIZE = 13;
 const int PHT_1LVL_SIZE = pow(2, HISTORY_1LVL_SIZE);
-const UINT32 bitmask_1lvl = 0xfff;
+const UINT32 bitmask_1lvl = 0x1fff;
 const UINT32 offset_1lvl = 0;
 
 static int oe_1lvl_bht;
@@ -175,17 +175,17 @@ static int oe_1lvl_pht[PHT_1LVL_SIZE];
  * TWO Level predictor constants and structures
  * ******************************************************/
 
-const int HISTORY_2LVL_SIZE = 10;
+const int HISTORY_2LVL_SIZE = 6;
 const int BHT_2LVL_SIZE = 512;
 const int PHT_2LVL_COL = pow(2, HISTORY_2LVL_SIZE);
-const UINT32 BHT_2LVL_MASK = 0x3fd;
-const UINT32 BHT_2LVL_OFFSET = 5;
+const UINT32 BHT_2LVL_MASK = 0xff8;
+const UINT32 BHT_2LVL_OFFSET = 3;
 
 const int PHT_2LVL_ROW = pow(2,BHT_2LVL_OFFSET);
-const UINT32 PHT_2LVL_MASK = 0x1f;
+const UINT32 PHT_2LVL_MASK = 0x7;
 const UINT32 PHT_2LVL_OFFSET = 0;
 
-const UINT32 HISTORY_MASK = 0x3ff;
+const UINT32 HISTORY_MASK = 0x3f;
 const UINT32 HISTORY_OFFSET = 0;
 
 static int oe_2lvl_bht[BHT_2LVL_SIZE];
@@ -215,6 +215,7 @@ static int counter_table[LOOP_TABLE_SIZE];
 
 /********* ENUM DEFINITION OF ALL OUR PREDICTORS ********/ 
 enum {
+    LOOP,
     ONELVL,
     PERCEPTRON,
     NUM_PREDICTORS
@@ -393,7 +394,7 @@ int choosePrediction(UINT32 PC) {
     strk.prediction[ONELVL] = Get1LvlPrediction(PC);
     //strk.prediction[TWOLVL] = Get2LvlPrediction(PC);
     strk.prediction[PERCEPTRON] = GetPerceptronPrediction(PC);
-    //strk.prediction[LOOP] = GetLoopPrediction(PC);
+    strk.prediction[LOOP] = GetLoopPrediction(PC);
     //strk.prediction[SAT_COUNT] = GetSaturatedCounterPrediction(PC);
     int max_index = 0;
 
@@ -449,8 +450,8 @@ bool GetPrediction_openend(UINT32 PC) {
 
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
     Update1LvlPrediction(PC, resolveDir);
-    //Update2LvlPrediction(PC, resolveDir);
-    //UpdateLoopPrediction(PC, resolveDir);
+    Update2LvlPrediction(PC, resolveDir);
+    UpdateLoopPrediction(PC, resolveDir);
     //UpdateSaturatedCounterPrediction(PC, resolveDir);
     UpdatePerceptronPredictor(PC, resolveDir, predDir);
     UpdateChooser(resolveDir);
