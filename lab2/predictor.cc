@@ -221,8 +221,7 @@ void InitPredictor_openend() {
     //No initialization needed
 }
 
-bool GetPrediction_openend(UINT32 PC) {
-  
+bool GetPrediction_openend(UINT32 PC) { 
   return GetPerceptronPrediction(PC);
 }
 
