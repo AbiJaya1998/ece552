@@ -151,15 +151,15 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 /**********************************************************
  * Perceptron learning predictor
  * ********************************************************/
-const UINT32 PERCEPTRON_ROW = 64;
-const UINT32 PERCEPTRON_COL = 6;
-const UINT32 P_HISTORY_MASK = 0x3f;
-const UINT32 P_HISTORY_OFFSET = 0;
+const UINT32 PERCEPTRON_ROW = 256;
+const UINT32 PERCEPTRON_COL = 32;
 
-static int percep_table[PERCEPTRON_ROW][PERCEPTRON_COL];
+const UINT32 P_THRESHOLD = 74;
+
+static char percep_table[PERCEPTRON_ROW][PERCEPTRON_COL];
 static bool p_hist[PERCEPTRON_COL];
 
-
+static int output = 0;
 /***********************************************************
  * ONE Level predictor constants and structures
  **********************************************************/
@@ -215,8 +215,6 @@ static int counter_table[LOOP_TABLE_SIZE];
 
 /********* ENUM DEFINITION OF ALL OUR PREDICTORS ********/ 
 enum {
-    LOOP,
-    ONELVL,
     PERCEPTRON,
     NUM_PREDICTORS
 };
@@ -242,21 +240,23 @@ int GetPerceptronPrediction(UINT32 PC) {
     int row_index = PC % PERCEPTRON_ROW;
     int j, weight_sum = 0;
     for(j = 1; j < PERCEPTRON_COL; j++){
+        int masked_weight = percep_table[row_index][j];     //9 bits for all weights
         if(p_hist[j]){
             //taken in global history
-            weight_sum += percep_table[row_index][j];
+            weight_sum += masked_weight;
         }
         else{
-            weight_sum += -1*(percep_table[row_index][j]);
+            weight_sum += ~masked_weight;
         }
     }
-    int output = percep_table[row_index][0] + weight_sum;
+    int masked_bias = percep_table[row_index][0];
+    output = masked_bias + weight_sum;
     return (output >= 0)?TAKEN:NOT_TAKEN;
 }
 
 void UpdatePerceptronPredictor(UINT32 PC, bool resolveDir, bool predDir) {
     int i = PC % PERCEPTRON_ROW;
-    if(resolveDir != predDir){
+    if(resolveDir != predDir || abs(output) <= P_THRESHOLD){
         if(resolveDir == TAKEN){
             percep_table[i][0] += 1; 
         }
@@ -279,7 +279,7 @@ void UpdatePerceptronPredictor(UINT32 PC, bool resolveDir, bool predDir) {
     for (k = 1; k < PERCEPTRON_COL-1; k++){
         p_hist[k] = p_hist[k+1];
     }
-    p_hist[k] = resolveDir;
+    p_hist[k] = (resolveDir == TAKEN);
 }
 
 /****** Global 2 Bit Saturated Counter******/
@@ -391,10 +391,10 @@ void Update2LvlPrediction(UINT32 PC, bool resolveDir){
 /********** PREDICTOR CHOOSER *************/
 int choosePrediction(UINT32 PC) {
     /******* ADD NEW PREDICTOR OPERATIONS HERE *********/
-    strk.prediction[ONELVL] = Get1LvlPrediction(PC);
+    //strk.prediction[ONELVL] = Get1LvlPrediction(PC);
     //strk.prediction[TWOLVL] = Get2LvlPrediction(PC);
     strk.prediction[PERCEPTRON] = GetPerceptronPrediction(PC);
-    strk.prediction[LOOP] = GetLoopPrediction(PC);
+    //strk.prediction[LOOP] = GetLoopPrediction(PC);
     //strk.prediction[SAT_COUNT] = GetSaturatedCounterPrediction(PC);
     int max_index = 0;
 
@@ -441,11 +441,21 @@ void InitPredictor_openend() {
     for(i = 0; i < LOOP_TABLE_SIZE; i++){
         counter_table[i] = WEAKLY_NOT_TAKEN;
     }
+
+    for(i = 0; i < PERCEPTRON_COL; i++){
+        p_hist[i] = false;
+    }
+    for(i = 0; i < PERCEPTRON_ROW; i++){
+        int j;
+        for(j = 0; j < PERCEPTRON_COL; j++){
+            percep_table[i][j] = 0;
+        }
+    }
 }
 
 bool GetPrediction_openend(UINT32 PC) {
   
-  return choosePrediction(PC);
+  return GetPerceptronPrediction(PC);
 }
 
 void UpdatePredictor_openend(UINT32 PC, bool resolveDir, bool predDir, UINT32 branchTarget) {
