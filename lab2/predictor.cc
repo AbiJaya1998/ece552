@@ -151,10 +151,10 @@ void UpdatePredictor_2level(UINT32 PC, bool resolveDir, bool predDir, UINT32 bra
 /**********************************************************
  * Perceptron learning predictor
  * ********************************************************/
-const UINT32 PERCEPTRON_ROW = 317;
-const long long PERCEPTRON_COL = 37;
+const UINT32 PERCEPTRON_ROW = 512;
+const long long PERCEPTRON_COL = 31;
 
-const int  P_THRESHOLD = 83;
+const int  P_THRESHOLD = 71;
 
 static char percep_table[PERCEPTRON_ROW][PERCEPTRON_COL];
 static bool p_hist[PERCEPTRON_COL];
