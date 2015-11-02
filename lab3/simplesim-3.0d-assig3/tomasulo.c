@@ -79,6 +79,57 @@
 
 //instruction queue for tomasulo
 static instruction_t* instr_queue[INSTR_QUEUE_SIZE];
+
+/* ECE552 Assignment 3 - BEGIN CODE */
+//Going to make the IFQ a linked list. easier operations for pushing and popping
+typedef struct Node{
+    instruction_t* inst;
+    struct Node* next;
+}Node;
+
+typedef struct{
+    Node *head;
+    Node *tail;
+}instr_queue_list;
+
+static instr_queue_list inst_queue;
+void instr_push(instruction_t *newInst){
+        //Check if we have an empty queue
+        Node *newNode = (Node*)malloc(sizeof(Node)); 
+        newNode->inst = newInst;
+        newNode->next = NULL;
+        if(!inst_queue.head && !inst_queue.tail){
+            inst_queue.head = newNode;
+            inst_queue.tail = newNode;
+            return;
+        }
+        if(inst_queue.tail){
+            inst_queue.tail->next = newNode;
+            inst_queue.tail = newNode;
+        }
+}
+
+void instr_pop(){
+    if(inst_queue.head){
+        Node *toDelete = inst_queue.head;
+        inst_queue.head = inst_queue.head->next;
+        toDelete->next = NULL;
+        free(toDelete);
+    }
+}
+
+instruction_t* instr_front(){
+    if(inst_queue.head){
+        return inst_queue.head->inst;
+    }
+}
+
+bool instr_isEmpty(){
+    return (!inst_queue.head && !inst_queue.tail);
+}
+
+
+/* ECE552 Assignment 3 - END CODE */
 //number of instructions in the instruction queue
 static int instr_queue_size = 0;
 
