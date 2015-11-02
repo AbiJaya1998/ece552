@@ -6,3 +6,4 @@ all: clean
 clean:
 	rm -f mb2bit
 	rm -f branchtrace.gz
+	rm -f mb2bit.o
