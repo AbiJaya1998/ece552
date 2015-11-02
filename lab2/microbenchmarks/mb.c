@@ -44,7 +44,7 @@ int main (void) {
  *  Approximately 45 thousand instructions will run.
  * With the case 1 having two mispredictions (one at the beginning and one at the end)
  * With case 2 only needing a history of 4 bits
- * With case 3 only needing a history of 3 bits
+ * With case 3 only needing a history of 7  bits
  * With case 4 only needing a history of 1 bit
  *
  * Less than 2.25 mispredications should occur considering the 4 cases.
