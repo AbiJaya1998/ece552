@@ -270,46 +270,46 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
  */
 counter_t runTomasulo(instruction_trace_t* trace)
 {
-  //initialize instruction queue
-  int i;
-  for (i = 0; i < INSTR_QUEUE_SIZE; i++) {
-    instr_queue[i] = NULL;
-  }
+    //initialize instruction queue
+    int i;
+    for (i = 0; i < INSTR_QUEUE_SIZE; i++) {
+      instr_queue[i] = NULL;
+    }
 
-  //initialize reservation stations
-  for (i = 0; i < RESERV_INT_SIZE; i++) {
-      reservINT[i] = NULL;
-  }
+    //initialize reservation stations
+    for (i = 0; i < RESERV_INT_SIZE; i++) {
+        reservINT[i] = NULL;
+    }
 
-  for(i = 0; i < RESERV_FP_SIZE; i++) {
-      reservFP[i] = NULL;
-  }
+    for(i = 0; i < RESERV_FP_SIZE; i++) {
+        reservFP[i] = NULL;
+    }
 
-  //initialize functional units
-  for (i = 0; i < FU_INT_SIZE; i++) {
-    fuINT[i] = NULL;
-  }
+    //initialize functional units
+    for (i = 0; i < FU_INT_SIZE; i++) {
+      fuINT[i] = NULL;
+    }
 
-  for (i = 0; i < FU_FP_SIZE; i++) {
-    fuFP[i] = NULL;
-  }
+    for (i = 0; i < FU_FP_SIZE; i++) {
+      fuFP[i] = NULL;
+    }
 
-  //initialize map_table to no producers
-  int reg;
-  for (reg = 0; reg < MD_TOTAL_REGS; reg++) {
-    map_table[reg] = NULL;
-  }
-  
-  int cycle = 1;
-  while (true) {
+    //initialize map_table to no producers
+    int reg;
+    for (reg = 0; reg < MD_TOTAL_REGS; reg++) {
+      map_table[reg] = NULL;
+    }
+    
+    int cycle = 1;
+    while (true) {
 
-     /* ECE552: YOUR CODE GOES HERE */
+       /* ECE552: YOUR CODE GOES HERE */
 
-     cycle++;
+       cycle++;
 
-     if (is_simulation_done(sim_num_insn))
-        break;
-  }
-  
-  return cycle;
+       if (is_simulation_done(sim_num_insn))
+          break;
+    }
+    
+    return cycle;
 }
