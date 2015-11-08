@@ -80,6 +80,9 @@
 //instruction queue for tomasulo
 static instruction_t* instr_queue[INSTR_QUEUE_SIZE];
 
+//number of instructions in the instruction queue
+static int instr_queue_size = 0;
+
 /* ECE552 Assignment 3 - BEGIN CODE */
 //Going to make the IFQ a linked list. easier operations for pushing and popping
 typedef struct Node{
@@ -98,6 +101,7 @@ void instr_push(instruction_t *newInst){
         Node *newNode = (Node*)malloc(sizeof(Node)); 
         newNode->inst = newInst;
         newNode->next = NULL;
+        instr_queue_size++;
         if(!inst_queue.head && !inst_queue.tail){
             inst_queue.head = newNode;
             inst_queue.tail = newNode;
@@ -115,6 +119,8 @@ void instr_pop(){
         inst_queue.head = inst_queue.head->next;
         toDelete->next = NULL;
         free(toDelete);
+
+        instr_queue_size--;
     }
 }
 
@@ -130,8 +136,6 @@ bool instr_isEmpty(){
 
 
 /* ECE552 Assignment 3 - END CODE */
-//number of instructions in the instruction queue
-static int instr_queue_size = 0;
 
 //reservation stations (each reservation station entry contains a pointer to an instruction)
 static instruction_t* reservINT[RESERV_INT_SIZE];
@@ -169,7 +173,7 @@ static bool is_simulation_done(counter_t sim_insn) {
 
   /* ECE552: YOUR CODE GOES HERE */
 
-  return true; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
+  return false; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
 }
 
 /* 
@@ -239,7 +243,15 @@ void dispatch_To_issue(int current_cycle) {
  */
 void fetch(instruction_trace_t* trace) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552: YOUR CODE GOES HERE */
+
+    if(instr_queue_size == 10){
+        return;
+    }
+
+    //I have valid index 
+    instr_push(&(trace->table[fetch_index]));
+    fetch_index++;
 }
 
 /* 
@@ -253,9 +265,9 @@ void fetch(instruction_trace_t* trace) {
  */
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 
-  fetch(trace);
+    /* ECE552: YOUR CODE GOES HERE */
+    fetch(trace);
 
-  /* ECE552: YOUR CODE GOES HERE */
 }
 
 /* 
@@ -270,6 +282,8 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
  */
 counter_t runTomasulo(instruction_trace_t* trace)
 {
+    inst_queue.head = NULL;
+    inst_queue.tail = NULL;
     //initialize instruction queue
     int i;
     for (i = 0; i < INSTR_QUEUE_SIZE; i++) {
@@ -301,14 +315,23 @@ counter_t runTomasulo(instruction_trace_t* trace)
     }
     
     int cycle = 1;
+    instruction_trace_t *currTrace = trace;
     while (true) {
 
        /* ECE552: YOUR CODE GOES HERE */
 
-       cycle++;
+        if(fetch_index == currTrace->size){
+            currTrace = currTrace->next;
+            fetch_index = 0;
+        }
+        while(IS_TRAP(currTrace->table[fetch_index].op)){
+            fetch_index++;
+        }
+        fetch_To_dispatch(currTrace,cycle);
+        cycle++;
 
-       if (is_simulation_done(sim_num_insn))
-          break;
+        if (is_simulation_done(sim_num_insn))
+            break;
     }
     
     return cycle;
