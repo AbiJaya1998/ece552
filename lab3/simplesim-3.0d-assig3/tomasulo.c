@@ -176,6 +176,11 @@ static bool is_simulation_done(counter_t sim_insn) {
   return false; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
 }
 
+bool isBusy(instruction_t *inst){
+
+
+}
+
 /* 
  * Description: 
  * 	Retires the instruction from writing to the Common Data Bus
@@ -244,13 +249,9 @@ void dispatch_To_issue(int current_cycle) {
 void fetch(instruction_trace_t* trace) {
 
     /* ECE552: YOUR CODE GOES HERE */
-
-    if(instr_queue_size == 10){
-        return;
-    }
-
     //I have valid index 
     instr_push(&(trace->table[fetch_index]));
+    
     fetch_index++;
 }
 
@@ -266,7 +267,35 @@ void fetch(instruction_trace_t* trace) {
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 
     /* ECE552: YOUR CODE GOES HERE */
-    fetch(trace);
+    if(instr_queue_size < 10){
+        trace->table[fetch_index].tom_dispatch_cycle = current_cycle;
+        fetch(trace);
+    }
+    
+    //Resolve target and source
+    
+    if(USES_FP_FU(instr_front()->op)){
+        int i;
+        for(i = 0; i < RESERV_FP_SIZE; i++){
+            if(!reservFP[i]){
+                reservFP[i] = instr_front();
+                instr_pop();
+                break;
+            }
+        }
+
+
+    }
+    else if(USES_INT_FU(instr_front()->op)){
+        int i;
+        for(i = 0; i < RESERV_INT_SIZE; i++){
+            if(!reservINT[i]){
+                reservINT[i] = instr_front();
+                instr_pop();
+                break;
+            }
+        }
+    }
 
 }
 
