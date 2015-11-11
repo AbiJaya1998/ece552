@@ -160,6 +160,20 @@ static int fetch_index = 0;
 /* RESERVATION STATIONS */
 
 
+/* ECE552 Assignment 3 - BEGIN CODE */
+void markRAWDependence(instruction_t *instr) {
+    if(!instr){ //Passed in a NULL instruction
+        return;
+    }
+    int i;
+    //iterate through all input registers and see if there are entries in the map table
+    //for the specific input register
+    for(i = 0; i < 3; i++){
+        instr->Q[i] = map_table[instr->r_in[i]];
+    }
+}
+/* ECE552 Assignment 3 - END CODE */
+
 /* 
  * Description: 
  * 	Checks if simulation is done by finishing the very last instruction
@@ -177,8 +191,8 @@ static bool is_simulation_done(counter_t sim_insn) {
 }
 
 bool isBusy(instruction_t *inst){
-
-
+    assert(inst);
+    return((inst->tom_cdb_cycle == 0)?true:false);
 }
 
 /* 
@@ -236,6 +250,18 @@ void issue_To_execute(int current_cycle) {
 void dispatch_To_issue(int current_cycle) {
 
   /* ECE552: YOUR CODE GOES HERE */
+    int i;
+    for(i = 0; i < RESERV_INT_SIZE; i++){
+        if(reservINT[i]){
+           reservINT[i]->tom_issue_cycle = current_cycle;
+        }
+    }
+
+    for(i = 0; i < RESERV_FP_SIZE; i++){
+        if(reservFP[i]){
+            reservFP[i]->tom_issue_cycle = current_cycle;
+        }
+    } 
 }
 
 /* 
@@ -279,22 +305,26 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
         for(i = 0; i < RESERV_FP_SIZE; i++){
             if(!reservFP[i]){
                 reservFP[i] = instr_front();
+                markRAWDependence(reservFP[i]);
                 instr_pop();
                 break;
             }
         }
-
-
     }
     else if(USES_INT_FU(instr_front()->op)){
         int i;
         for(i = 0; i < RESERV_INT_SIZE; i++){
             if(!reservINT[i]){
                 reservINT[i] = instr_front();
+                markRAWDependence(reservINT[i]);
                 instr_pop();
                 break;
             }
         }
+    }
+    else if(IS_UNCOND_CTRL(instr_front()->op) ||
+            IS_COND_CTRL(instr_front()->op)){
+        instr_pop();
     }
 
 }
@@ -311,8 +341,11 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
  */
 counter_t runTomasulo(instruction_trace_t* trace)
 {
+    /* ECE552 Assignment 3 - BEGIN CODE */
     inst_queue.head = NULL;
     inst_queue.tail = NULL;
+    /* ECE552 Assignment 3 - END CODE */
+    
     //initialize instruction queue
     int i;
     for (i = 0; i < INSTR_QUEUE_SIZE; i++) {
@@ -349,18 +382,23 @@ counter_t runTomasulo(instruction_trace_t* trace)
 
        /* ECE552: YOUR CODE GOES HERE */
 
+        /* ECE552 Assignment 3 - BEGIN CODE */
+        if (is_simulation_done(sim_num_insn))
+            break;
+         
+        dispatch_To_issue(cycle);
         if(fetch_index == currTrace->size){
             currTrace = currTrace->next;
             fetch_index = 0;
         }
-        while(IS_TRAP(currTrace->table[fetch_index].op)){
+        if(IS_TRAP(currTrace->table[fetch_index].op)){
             fetch_index++;
+            continue;
         }
         fetch_To_dispatch(currTrace,cycle);
         cycle++;
 
-        if (is_simulation_done(sim_num_insn))
-            break;
+        /* ECE552 Assignment 3 - END CODE */
     }
     
     return cycle;
