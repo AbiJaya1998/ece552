@@ -84,6 +84,7 @@ static instruction_t* instr_queue[INSTR_QUEUE_SIZE];
 static int instr_queue_size = 0;
 
 /* ECE552 Assignment 3 - BEGIN CODE */
+
 //Going to make the IFQ a linked list. easier operations for pushing and popping
 typedef struct Node{
     instruction_t* inst;
@@ -162,15 +163,42 @@ static int fetch_index = 0;
 
 /* ECE552 Assignment 3 - BEGIN CODE */
 void markRAWDependence(instruction_t *instr) {
-    if(!instr){ //Passed in a NULL instruction
-        return;
-    }
+    assert(instr);
     int i;
     //iterate through all input registers and see if there are entries in the map table
     //for the specific input register
     for(i = 0; i < 3; i++){
-        instr->Q[i] = map_table[instr->r_in[i]];
+        if(instr->r_in[i] != DNA){
+            instr->Q[i] = map_table[instr->r_in[i]];
+        }
     }
+}
+
+void updateMapTable(instruction_t *instr) {
+    assert(instr);
+    int i;
+    for(i = 0; i < 2; i++){
+        if(instr->r_out[i] != DNA){
+            map_table[instr->r_out[i]];
+        }
+    }
+}
+
+bool resolveRAW(instruction_t *instr){
+    assert(instr);
+    int i;
+    for(i = 0; i < 3; i++){
+        //If the tom_cdb_cycle variable has not been set, still busy
+        if(instr->Q[i]->tom_cdb_cycle == 0){
+            return false;
+        }
+    }
+    //All elements of Q have their tom_cdb_cycle set, we are good to go.
+    return true;
+}
+
+bool availableFU(instruction_t *instr){
+    return (instr == NULL)?true:false;
 }
 /* ECE552 Assignment 3 - END CODE */
 
@@ -237,6 +265,81 @@ void execute_To_CDB(int current_cycle) {
 void issue_To_execute(int current_cycle) {
 
   /* ECE552: YOUR CODE GOES HERE */
+  //Instructions enter this stage if all dependencies are met and functional units are available
+  int i;
+  instruction_t *oldest_instr = NULL;
+  instruction_t *second_oldest_instr = NULL;
+  for(i = 0; i < RESERV_INT_SIZE; i++){
+      if(reservINT[i] &&
+         reservINT[i]->tom_execute_cycle == 0 &&
+         resolveRAW(reservINT[i])){
+        if(!oldest_instr){
+            oldest_instr = reservINT[i];
+        }
+        else if(!second_oldest_instr){
+            second_oldest_instr = reservINT[i];
+        }
+        else if(reservINT[i]->index < oldest_instr->index){
+            second_oldest_instr = oldest_instr;
+            oldest_instr = reservINT[i];    
+        }
+        else if(reservINT[i]->index < second_oldest_instr->index){
+            second_oldest_instr = reservINT[i];
+        }
+      }
+  }
+    for(i = 0; i < FU_INT_SIZE; i++){
+        if(availableFU(fuINT[i])){
+            if(oldest_instr){
+                fuINT[i] = oldest_instr;
+                fuINT[i]->tom_execute_cycle = current_cycle;
+                oldest_instr = NULL;
+            }
+            else if(second_oldest_instr){
+                fuINT[i] = second_oldest_instr;
+                fuINT[i]->tom_execute_cycle = current_cycle;
+                second_oldest_instr = NULL;
+            }
+        }
+    }
+
+  oldest_instr = NULL;
+  second_oldest_instr = NULL;
+
+  for(i = 0; i < RESERV_FP_SIZE; i++){
+      if(reservFP[i] &&
+         reservFP[i]->tom_execute_cycle == 0 &&
+         resolveRAW(reservFP[i])){
+          if(!oldest_instr){
+              oldest_instr = reservFP[i];
+          }
+        else if(!second_oldest_instr){
+            second_oldest_instr = reservFP[i];
+        }
+        else if(reservFP[i]->index < oldest_instr->index){
+            second_oldest_instr = oldest_instr;
+            oldest_instr = reservFP[i];    
+        }
+        else if(reservFP[i]->index < second_oldest_instr->index){
+            second_oldest_instr = reservFP[i];
+        }
+
+      }
+  }
+    for(i = 0; i < FU_FP_SIZE; i++){
+        if(availableFU(fuFP[i])){
+            if(oldest_instr){
+                fuFP[i] = oldest_instr;
+                fuFP[i]->tom_execute_cycle = current_cycle;
+                oldest_instr = NULL;
+            }
+            else if(second_oldest_instr){
+                fuFP[i] = second_oldest_instr;
+                fuFP[i]->tom_execute_cycle = current_cycle;
+                second_oldest_instr = NULL;
+            }
+        }
+    }
 }
 
 /* 
@@ -252,13 +355,15 @@ void dispatch_To_issue(int current_cycle) {
   /* ECE552: YOUR CODE GOES HERE */
     int i;
     for(i = 0; i < RESERV_INT_SIZE; i++){
-        if(reservINT[i]){
+        //Set the tom_issue_cycle value if it's still 0 and the element is not NULL
+        if(reservINT[i] && reservINT[i]->tom_issue_cycle == 0){
            reservINT[i]->tom_issue_cycle = current_cycle;
         }
     }
 
     for(i = 0; i < RESERV_FP_SIZE; i++){
-        if(reservFP[i]){
+        //Set the tom_issue_cycle value if it's still 0 and the element is not NULL
+        if(reservFP[i] && reservFP[i]->tom_issue_cycle == 0){
             reservFP[i]->tom_issue_cycle = current_cycle;
         }
     } 
@@ -275,10 +380,12 @@ void dispatch_To_issue(int current_cycle) {
 void fetch(instruction_trace_t* trace) {
 
     /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552 Assignment 3 - BEGIN CODE */
     //I have valid index 
-    instr_push(&(trace->table[fetch_index]));
-    
+    instruction_t *currInstr = get_instr(trace, fetch_index);
+    instr_push(currInstr); 
     fetch_index++;
+    /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -294,11 +401,18 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 
     /* ECE552: YOUR CODE GOES HERE */
     if(instr_queue_size < 10){
-        trace->table[fetch_index].tom_dispatch_cycle = current_cycle;
+        instruction_t *currInstr = get_instr(trace, fetch_index);
+        while(currInstr && IS_TRAP(currInstr->op)){
+            fetch_index++;
+            currInstr = get_instr(trace, fetch_index); 
+        }
+        currInstr->tom_dispatch_cycle = current_cycle;
         fetch(trace);
     }
     
-    //Resolve target and source
+    //Resolve target and source operand dependence
+    //Set map table of r_out to tag which reservation
+    //station will produce the result
     
     if(USES_FP_FU(instr_front()->op)){
         int i;
@@ -306,6 +420,7 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
             if(!reservFP[i]){
                 reservFP[i] = instr_front();
                 markRAWDependence(reservFP[i]);
+                updateMapTable(reservFP[i]);
                 instr_pop();
                 break;
             }
@@ -317,6 +432,7 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
             if(!reservINT[i]){
                 reservINT[i] = instr_front();
                 markRAWDependence(reservINT[i]);
+                updateMapTable(reservINT[i]);
                 instr_pop();
                 break;
             }
@@ -326,7 +442,6 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
             IS_COND_CTRL(instr_front()->op)){
         instr_pop();
     }
-
 }
 
 /* 
@@ -377,25 +492,16 @@ counter_t runTomasulo(instruction_trace_t* trace)
     }
     
     int cycle = 1;
-    instruction_trace_t *currTrace = trace;
-    while (true) {
+    while (true){
 
        /* ECE552: YOUR CODE GOES HERE */
 
         /* ECE552 Assignment 3 - BEGIN CODE */
         if (is_simulation_done(sim_num_insn))
             break;
-         
+        issue_To_execute(cycle); 
         dispatch_To_issue(cycle);
-        if(fetch_index == currTrace->size){
-            currTrace = currTrace->next;
-            fetch_index = 0;
-        }
-        if(IS_TRAP(currTrace->table[fetch_index].op)){
-            fetch_index++;
-            continue;
-        }
-        fetch_To_dispatch(currTrace,cycle);
+        fetch_To_dispatch(trace,cycle);
         cycle++;
 
         /* ECE552 Assignment 3 - END CODE */
