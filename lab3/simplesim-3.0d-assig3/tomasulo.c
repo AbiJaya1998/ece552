@@ -97,14 +97,6 @@ typedef struct{
 }instr_queue_list;
 
 static instr_queue_list inst_queue;
-void printIFQ(){
-    Node *currNode = inst_queue.head;
-
-    while(currNode){
-        print_tom_instr(currNode->inst);
-        currNode = currNode->next;
-    }
-}
 void instr_push(instruction_t *newInst){
         //Check if we have an empty queue
         Node *newNode = (Node*)malloc(sizeof(Node)); 
@@ -188,33 +180,28 @@ bool isBusy(instruction_t *inst, int current_cycle){
 }
 
 void markRAWDependence(instruction_t *instr) {
-    assert(instr);
     int i;
     //iterate through all input registers and see if there are entries in the map table
     //for the specific input register
     for(i = 0; i < 3; i++){
         if(instr->r_in[i] != DNA &&
            instr->r_in[i] != 0){
-            assert(instr->r_in[i] >= 0 && instr->r_in[i] < MD_TOTAL_REGS);
             instr->Q[i] = map_table[instr->r_in[i]];
         }
     }
 }
 
 void updateMapTable(instruction_t *instr) {
-    assert(instr);
     int i;
     for(i = 0; i < 2; i++){
         if(instr->r_out[i] != DNA &&
            instr->r_out[i] != 0){
-            assert(instr->r_out[i] >= 0 && instr->r_out[i] < MD_TOTAL_REGS);
             map_table[instr->r_out[i]] = instr;
         }
     }
 }
 
 bool resolveRAW(instruction_t *instr, int current_cycle){
-    assert(instr);
     int i;
     for(i = 0; i < 3; i++){
         //If the tom_cdb_cycle variable has not been set, still busy
@@ -237,7 +224,8 @@ bool removeFromRS(instruction_t *instr){
     if(!instr){
         return false;
     }
-    if(USES_INT_FU(instr->op)){
+    if(USES_INT_FU(instr->op) ||
+       instr->op == 0){
         int i;
         for(i = 0; i < RESERV_INT_SIZE; i++){
             if(instr == reservINT[i]){
@@ -263,7 +251,8 @@ bool removeFromFU(instruction_t *instr){
     if(!instr){
         return false;
     }
-    if(USES_INT_FU(instr->op)){
+    if(USES_INT_FU(instr->op) ||
+       instr->op == 0){
         int i;
         for(i = 0; i < FU_INT_SIZE; i++){
             if(instr == fuINT[i]){
@@ -297,13 +286,14 @@ bool removeFromFU(instruction_t *instr){
  */
 static bool is_simulation_done(counter_t sim_insn) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552 Assignment 3 - BEGIN CODE */
 
     //Check that IFQ is empty
     //instr at fetch index is NULL
     //all RS stations are NULL
     //FU is NULL
-  if(fetch_index < sim_insn){
+  if(fetch_index <= sim_insn){
         return false;
   }
   
@@ -341,6 +331,7 @@ static bool is_simulation_done(counter_t sim_insn) {
   }
 
   return true; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
+    /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -353,12 +344,17 @@ static bool is_simulation_done(counter_t sim_insn) {
  */
 void CDB_To_retire(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552 Assignment 3 - BEGIN CODE */
+    
+    //We remove the instructions from the CDB when one full cycle has elapsed since it entered
     if(commonDataBus &&
        commonDataBus->tom_cdb_cycle != 0 &&
        current_cycle > (commonDataBus->tom_cdb_cycle+1)){
         commonDataBus = NULL;
     }
+    /* ECE552 Assignment 3 - END CODE */
+
 }
 
 
@@ -373,14 +369,14 @@ void CDB_To_retire(int current_cycle) {
 void execute_To_CDB(int current_cycle) {
 
   /* ECE552: YOUR CODE GOES HERE */
-    //First Check that the CDB is free
+    //First Check for completed store instructions that don't need access to CDB 
+    //Check if CDB is free afterwards to look for oldest completed instruction
     //Then check that the functional unit is allocated &&
     //execute variable has been set &&
     //current_cycle > tom_execute_cycle + LATENCY
-    // look for older instruction
-    //
-    //
-    //
+    // Get the oldest instruction that fits the criteria above and give it access to the CDB
+    
+    /* ECE552 Assignment 3 - BEGIN CODE */
     int i;
     for(i = 0; i < FU_INT_SIZE; i++){
         if(fuINT[i] &&
@@ -389,7 +385,7 @@ void execute_To_CDB(int current_cycle) {
                
             if(current_cycle > (fuINT[i]->tom_execute_cycle + FU_INT_LATENCY)){
                 if(!WRITES_CDB(fuINT[i]->op)){
-                    assert(removeFromRS(fuINT[i]) == true);
+                    removeFromRS(fuINT[i]);
                     fuINT[i] = NULL;
                 }
             }
@@ -430,13 +426,12 @@ void execute_To_CDB(int current_cycle) {
         if(oldest){
             commonDataBus = oldest;
             oldest->tom_cdb_cycle = current_cycle;
-            
-            assert(removeFromRS(oldest) == true);
-            assert(removeFromFU(oldest) == true);
+            removeFromRS(oldest);
+            removeFromFU(oldest);
         }
    
     }
-
+    /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -451,7 +446,9 @@ void execute_To_CDB(int current_cycle) {
  */
 void issue_To_execute(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552 Assignment 3 - BEGIN CODE */
+
   //Instructions enter this stage if all dependencies are met and functional units are available
   int i;
   instruction_t *oldest_instr = NULL;
@@ -481,13 +478,11 @@ void issue_To_execute(int current_cycle) {
                 fuINT[i] = oldest_instr;
                 fuINT[i]->tom_execute_cycle = current_cycle;
                 oldest_instr = NULL;
-                print_tom_instr(fuINT[i]);
             }
             else if(second_oldest_instr){
                 fuINT[i] = second_oldest_instr;
                 fuINT[i]->tom_execute_cycle = current_cycle;
                 second_oldest_instr = NULL;
-                print_tom_instr(fuINT[i]);
             }
         }
     }
@@ -513,11 +508,12 @@ void issue_To_execute(int current_cycle) {
                 fuFP[i] = oldest_instr;
                 fuFP[i]->tom_execute_cycle = current_cycle;
                 oldest_instr = NULL;
-                print_tom_instr(fuFP[i]);
             }
 
         }
     }
+    /* ECE552 Assignment 3 - END CODE */
+
 }
 
 /* 
@@ -530,14 +526,15 @@ void issue_To_execute(int current_cycle) {
  */
 void dispatch_To_issue(int current_cycle) {
 
-  /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552: YOUR CODE GOES HERE */
+    /* ECE552 Assignment 3 - BEGIN CODE */
+
     int i;
     for(i = 0; i < RESERV_INT_SIZE; i++){
         //Set the tom_issue_cycle value if it's still 0 and the element is not NULL
         if(reservINT[i] && reservINT[i]->tom_issue_cycle == 0){
            reservINT[i]->tom_issue_cycle = current_cycle;
 
-           print_tom_instr(reservINT[i]);
         }
     }
 
@@ -545,9 +542,9 @@ void dispatch_To_issue(int current_cycle) {
         //Set the tom_issue_cycle value if it's still 0 and the element is not NULL
         if(reservFP[i] && reservFP[i]->tom_issue_cycle == 0){
             reservFP[i]->tom_issue_cycle = current_cycle;
-            print_tom_instr(reservFP[i]);
         }
-    } 
+    }
+    /* ECE552 Assignment 3 - END CODE */
 }
 
 /* 
@@ -567,7 +564,6 @@ void fetch(instruction_trace_t* trace) {
     instr_push(currInstr); 
     fetch_index++;
     //REMOVE THIS BEFORE SUBMISSION
-    // print_tom_instr(currInstr);
     /* ECE552 Assignment 3 - END CODE */
 }
 
@@ -583,7 +579,10 @@ void fetch(instruction_trace_t* trace) {
 void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
 
     /* ECE552: YOUR CODE GOES HERE */
-    if(instr_queue_size < INSTR_QUEUE_SIZE){
+    /* ECE552 Assignment 3 - BEGIN CODE */
+
+    if(instr_queue_size < INSTR_QUEUE_SIZE &&
+        fetch_index <= sim_num_insn){
         instruction_t *currInstr = get_instr(trace, fetch_index);
         while(currInstr && (IS_TRAP(currInstr->op))){
             fetch_index++;
@@ -602,8 +601,9 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
         int i;
         for(i = 0; i < RESERV_FP_SIZE; i++){
             if(!reservFP[i]){
-                printf("Adding RS entry for FP\n");
                 reservFP[i] = instr_front();
+                //Make sure we mark the existing raw dependences
+                //BEFORE updating the map table with my target regs
                 markRAWDependence(reservFP[i]);
                 updateMapTable(reservFP[i]);
                 instr_pop();
@@ -615,7 +615,6 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
         int i;
         for(i = 0; i < RESERV_INT_SIZE; i++){
             if(!reservINT[i]){
-                printf("Adding RS entry for INT\n");
                 reservINT[i] = instr_front();
                 markRAWDependence(reservINT[i]);
                 updateMapTable(reservINT[i]);
@@ -630,6 +629,8 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
         instr_pop();
     }
     return;
+    /* ECE552 Assignment 3 - END CODE */
+
 }
 
 /* 
