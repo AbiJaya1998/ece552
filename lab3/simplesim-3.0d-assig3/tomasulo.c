@@ -168,7 +168,7 @@ static instruction_t* commonDataBus = NULL;
 static instruction_t* map_table[MD_TOTAL_REGS];
 
 //the index of the last instruction fetched
-static int fetch_index = 0;
+static int fetch_index = 1;
 
 /* FUNCTIONAL UNITS */
 
@@ -177,8 +177,14 @@ static int fetch_index = 0;
 
 
 /* ECE552 Assignment 3 - BEGIN CODE */
-bool isBusy(instruction_t *inst){
-    return((inst && inst->tom_cdb_cycle == 0)?true:false);
+bool isBusy(instruction_t *inst, int current_cycle){
+    if(inst &&
+      (inst->tom_cdb_cycle == 0 ||
+       inst->tom_cdb_cycle == current_cycle)){
+        return true;
+    }
+
+    return false;
 }
 
 void markRAWDependence(instruction_t *instr) {
@@ -187,7 +193,8 @@ void markRAWDependence(instruction_t *instr) {
     //iterate through all input registers and see if there are entries in the map table
     //for the specific input register
     for(i = 0; i < 3; i++){
-        if(instr->r_in[i] != DNA){
+        if(instr->r_in[i] != DNA &&
+           instr->r_in[i] != 0){
             assert(instr->r_in[i] >= 0 && instr->r_in[i] < MD_TOTAL_REGS);
             instr->Q[i] = map_table[instr->r_in[i]];
         }
@@ -198,19 +205,20 @@ void updateMapTable(instruction_t *instr) {
     assert(instr);
     int i;
     for(i = 0; i < 2; i++){
-        if(instr->r_out[i] != DNA){
+        if(instr->r_out[i] != DNA &&
+           instr->r_out[i] != 0){
             assert(instr->r_out[i] >= 0 && instr->r_out[i] < MD_TOTAL_REGS);
-            map_table[instr->r_out[i]];
+            map_table[instr->r_out[i]] = instr;
         }
     }
 }
 
-bool resolveRAW(instruction_t *instr){
+bool resolveRAW(instruction_t *instr, int current_cycle){
     assert(instr);
     int i;
     for(i = 0; i < 3; i++){
         //If the tom_cdb_cycle variable has not been set, still busy
-        if(isBusy(instr->Q[i])){
+        if(isBusy(instr->Q[i], current_cycle)){
             return false;
         }
     }
@@ -220,6 +228,61 @@ bool resolveRAW(instruction_t *instr){
 
 bool availableFU(instruction_t *instr){
     return (instr == NULL)?true:false;
+}
+
+//removes the instruction from the in reservation station
+//returns true if a removal occurred and was successful
+//returns false otherwise
+bool removeFromRS(instruction_t *instr){
+    if(!instr){
+        return false;
+    }
+    if(USES_INT_FU(instr->op)){
+        int i;
+        for(i = 0; i < RESERV_INT_SIZE; i++){
+            if(instr == reservINT[i]){
+                reservINT[i] = NULL;
+                return true;
+            }
+        }
+    }
+
+    else if(USES_FP_FU(instr->op)){
+        int i;
+        for(i = 0; i < RESERV_FP_SIZE; i++){
+            if(instr == reservFP[i]){
+                reservFP[i] = NULL;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool removeFromFU(instruction_t *instr){
+    if(!instr){
+        return false;
+    }
+    if(USES_INT_FU(instr->op)){
+        int i;
+        for(i = 0; i < FU_INT_SIZE; i++){
+            if(instr == fuINT[i]){
+                fuINT[i] = NULL;
+                return true;
+            }
+        }
+    }
+
+    else if(USES_FP_FU(instr->op)){
+        int i;
+        for(i = 0; i < FU_FP_SIZE; i++){
+            if(instr == fuFP[i]){
+                fuFP[i] = NULL;
+                return true;
+            }
+        }
+    }
+    return false;
 }
 /* ECE552 Assignment 3 - END CODE */
 
@@ -236,7 +299,48 @@ static bool is_simulation_done(counter_t sim_insn) {
 
   /* ECE552: YOUR CODE GOES HERE */
 
-  return false; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
+    //Check that IFQ is empty
+    //instr at fetch index is NULL
+    //all RS stations are NULL
+    //FU is NULL
+  if(fetch_index < sim_insn){
+        return false;
+  }
+  
+  if(instr_queue_size > 0){
+        return false;
+  }
+
+  int i;
+  for(i = 0; i < RESERV_INT_SIZE; i++){
+        if(reservINT[i] != NULL){
+            return false;
+        }
+  }
+
+  for(i = 0; i < RESERV_FP_SIZE; i++){
+        if(reservFP[i] != NULL){
+            return false;
+        }
+  }
+
+  for(i = 0; i < FU_INT_SIZE; i++){
+        if(fuINT[i] != NULL){
+            return false;
+        }
+  }
+
+  for(i = 0; i < FU_FP_SIZE; i++){
+        if(fuFP[i] != NULL){
+            return false;
+        }
+  }
+
+  if(commonDataBus){
+        return false;
+  }
+
+  return true; //ECE552: you can change this as needed; we've added this so the code provided to you compiles
 }
 
 /* 
@@ -250,7 +354,11 @@ static bool is_simulation_done(counter_t sim_insn) {
 void CDB_To_retire(int current_cycle) {
 
   /* ECE552: YOUR CODE GOES HERE */
-
+    if(commonDataBus &&
+       commonDataBus->tom_cdb_cycle != 0 &&
+       current_cycle > (commonDataBus->tom_cdb_cycle+1)){
+        commonDataBus = NULL;
+    }
 }
 
 
@@ -265,6 +373,69 @@ void CDB_To_retire(int current_cycle) {
 void execute_To_CDB(int current_cycle) {
 
   /* ECE552: YOUR CODE GOES HERE */
+    //First Check that the CDB is free
+    //Then check that the functional unit is allocated &&
+    //execute variable has been set &&
+    //current_cycle > tom_execute_cycle + LATENCY
+    // look for older instruction
+    //
+    //
+    //
+    int i;
+    for(i = 0; i < FU_INT_SIZE; i++){
+        if(fuINT[i] &&
+           fuINT[i]->tom_execute_cycle != 0 &&
+           fuINT[i]->tom_cdb_cycle == 0){
+               
+            if(current_cycle > (fuINT[i]->tom_execute_cycle + FU_INT_LATENCY)){
+                if(!WRITES_CDB(fuINT[i]->op)){
+                    assert(removeFromRS(fuINT[i]) == true);
+                    fuINT[i] = NULL;
+                }
+            }
+        }   
+    }
+
+    if(!commonDataBus){ //YES CDB is free
+        instruction_t *oldest = NULL;
+        int i;
+        for(i = 0; i < FU_INT_SIZE; i++){
+            if(fuINT[i] &&
+               fuINT[i]->tom_execute_cycle != 0 &&
+               fuINT[i]->tom_cdb_cycle == 0){
+               
+               if(current_cycle > (fuINT[i]->tom_execute_cycle + FU_INT_LATENCY)){
+                    if(!oldest ||
+                        fuINT[i]->index < oldest->index){
+                        oldest = fuINT[i];
+                    }
+                }
+            }   
+        }
+        for(i = 0; i < FU_FP_SIZE; i++){
+            if(fuFP[i] &&
+               fuFP[i]->tom_execute_cycle != 0 &&
+               fuFP[i]->tom_cdb_cycle == 0 &&
+               current_cycle > (fuFP[i]->tom_execute_cycle + FU_FP_LATENCY)){
+                if(!oldest ||
+                    fuFP[i]->index < oldest->index){
+                    oldest = fuFP[i];
+                }
+            }
+        }
+        //We have a candidate for the CDB
+        //set the common data bus
+        //set it's FU to NULL
+        //set it's reservation station to NULL
+        if(oldest){
+            commonDataBus = oldest;
+            oldest->tom_cdb_cycle = current_cycle;
+            
+            assert(removeFromRS(oldest) == true);
+            assert(removeFromFU(oldest) == true);
+        }
+   
+    }
 
 }
 
@@ -282,7 +453,6 @@ void issue_To_execute(int current_cycle) {
 
   /* ECE552: YOUR CODE GOES HERE */
   //Instructions enter this stage if all dependencies are met and functional units are available
-  printf("Invoking Issue To Execute\n");
   int i;
   instruction_t *oldest_instr = NULL;
   instruction_t *second_oldest_instr = NULL;
@@ -290,7 +460,7 @@ void issue_To_execute(int current_cycle) {
       if(reservINT[i] &&
          reservINT[i]->tom_issue_cycle != 0 &&
          reservINT[i]->tom_execute_cycle == 0 &&
-         resolveRAW(reservINT[i])){
+         resolveRAW(reservINT[i], current_cycle)){
         if(!oldest_instr){
             oldest_instr = reservINT[i];
         }
@@ -311,11 +481,13 @@ void issue_To_execute(int current_cycle) {
                 fuINT[i] = oldest_instr;
                 fuINT[i]->tom_execute_cycle = current_cycle;
                 oldest_instr = NULL;
+                print_tom_instr(fuINT[i]);
             }
             else if(second_oldest_instr){
                 fuINT[i] = second_oldest_instr;
                 fuINT[i]->tom_execute_cycle = current_cycle;
                 second_oldest_instr = NULL;
+                print_tom_instr(fuINT[i]);
             }
         }
     }
@@ -327,7 +499,7 @@ void issue_To_execute(int current_cycle) {
       if(reservFP[i] &&
          reservFP[i]->tom_issue_cycle != 0 &&
          reservFP[i]->tom_execute_cycle == 0 &&
-         resolveRAW(reservFP[i])){
+         resolveRAW(reservFP[i], current_cycle)){
           if(!oldest_instr ||
              reservFP[i]->index < oldest_instr->index){
               oldest_instr = reservFP[i];
@@ -341,7 +513,9 @@ void issue_To_execute(int current_cycle) {
                 fuFP[i] = oldest_instr;
                 fuFP[i]->tom_execute_cycle = current_cycle;
                 oldest_instr = NULL;
+                print_tom_instr(fuFP[i]);
             }
+
         }
     }
 }
@@ -411,7 +585,7 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
     /* ECE552: YOUR CODE GOES HERE */
     if(instr_queue_size < INSTR_QUEUE_SIZE){
         instruction_t *currInstr = get_instr(trace, fetch_index);
-        while(currInstr && (IS_TRAP(currInstr->op) || currInstr->op == 0)){
+        while(currInstr && (IS_TRAP(currInstr->op))){
             fetch_index++;
             currInstr = get_instr(trace, fetch_index); 
         }
@@ -437,7 +611,7 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
             }
         }
     }
-    else if(instr_front() && USES_INT_FU(instr_front()->op)){
+    else if(instr_front() && (USES_INT_FU(instr_front()->op) || instr_front()->op == 0)){
         int i;
         for(i = 0; i < RESERV_INT_SIZE; i++){
             if(!reservINT[i]){
@@ -450,8 +624,9 @@ void fetch_To_dispatch(instruction_trace_t* trace, int current_cycle) {
             }
         }
     }
-    else {
-        //printf("Branch or NO Op\n");
+    else if(instr_front() && 
+            (IS_COND_CTRL(instr_front()->op) || 
+             IS_UNCOND_CTRL(instr_front()->op))) {
         instr_pop();
     }
     return;
@@ -512,7 +687,9 @@ counter_t runTomasulo(instruction_trace_t* trace)
         /* ECE552 Assignment 3 - BEGIN CODE */
         if (is_simulation_done(sim_num_insn))
             break;
-        //issue_To_execute(cycle); 
+        CDB_To_retire(cycle);
+        execute_To_CDB(cycle);
+        issue_To_execute(cycle); 
         dispatch_To_issue(cycle);
         fetch_To_dispatch(trace,cycle);
         cycle++;
