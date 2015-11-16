@@ -507,7 +507,25 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
 
 /* Next Line Prefetcher */
 void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	; 
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+    //prefetch logic
+    //get the next block of data from the addr 
+    assert(cp != NULL);
+
+    md_addr_t new_addr = addr + cp->bsize;
+    new_addr -= new_addr % cp->bsize;
+
+    cache_access(cp,	/* cache to access */
+	     Read,		/* access type, Read or Write */
+	     new_addr,		/* address of access */
+	     NULL,			/* ptr to buffer for input/output */
+	     cp->bsize,		/* number of bytes to access */
+	     0,		/* time of access */
+	     NULL,		/* for return of user data ptr */
+	     NULL,	/* for address of replaced block */
+	     1);
+
+/* ECE552 Assignment 4 - END CODE*/
 }
 
 /* Open Ended Prefetcher */
