@@ -505,9 +505,10 @@ cache_reg_stats(struct cache_t *cp,	/* cache instance */
 
 }
 
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+
 /* Next Line Prefetcher */
 void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
-/* ECE552 Assignment 4 - BEGIN CODE*/	
     //prefetch logic
     //get the next block of data from the addr 
     assert(cp != NULL);
@@ -515,29 +516,140 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
     md_addr_t new_addr = addr + cp->bsize;
     new_addr -= new_addr % cp->bsize;
 
-    cache_access(cp,	/* cache to access */
+    cache_access(cp,	        /* cache to access */
 	     Read,		/* access type, Read or Write */
 	     new_addr,		/* address of access */
-	     NULL,			/* ptr to buffer for input/output */
+	     NULL,		/* ptr to buffer for input/output */
 	     cp->bsize,		/* number of bytes to access */
-	     0,		/* time of access */
+	     0,		        /* time of access */
 	     NULL,		/* for return of user data ptr */
-	     NULL,	/* for address of replaced block */
+	     NULL,	        /* for address of replaced block */
 	     1);
 
-/* ECE552 Assignment 4 - END CODE*/
 }
+
+md_addr_t get_PC();
 
 /* Open Ended Prefetcher */
 void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	; 
+	;
 }
+
+#define NUM_RTP_ENTRIES 1024
+#define TAG_MASK 0x1ff8
+
+typedef enum {
+    INIT = 0,
+    STEADY,
+    TRANSIENT,
+    NOPRED
+}state_t;
+
+typedef struct rpt_t rpt_t;
+
+struct rpt_t {
+     md_addr_t tag;
+     md_addr_t prev_addr;
+     int stride;
+     state_t state;
+};
+
+static rpt_t rpt[NUM_RTP_ENTRIES];
 
 /* Stride Prefetcher */
 void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	; 
+    // get tag
+    md_addr_t pc = get_PC();
+    md_addr_t rpt_index = (pc & TAG_MASK) >> 3;
+
+    // check current state of entry at tag
+    //
+    // if it does not exist yet
+    if (rpt[rpt_index].tag == 0) {
+        rpt[rpt_index].tag = pc;
+        rpt[rpt_index].prev_addr = addr;
+        rpt[rpt_index].stride = 0;
+        rpt[rpt_index].state = INIT;
+    }
+    // already there, check states
+    else {
+        // get the new stride
+        int new_stride;
+        new_stride = addr - rpt[rpt_index].prev_addr;
+
+        // move state depending on current state
+        switch (rpt[rpt_index].state) {
+            case INIT:
+
+                if (rpt[rpt_index].stride == new_stride) {
+                    rpt[rpt_index].state = STEADY;
+                }
+                else {
+                    rpt[rpt_index].state = TRANSIENT;
+                }   
+
+                break;
+
+            case STEADY:
+
+                if (rpt[rpt_index].stride != new_stride) {
+                    rpt[rpt_index].state = INIT;
+                }
+
+                break;
+            case TRANSIENT:
+
+                if (rpt[rpt_index].stride == new_stride) {
+                    rpt[rpt_index].state = STEADY;
+                }
+                else {
+                    rpt[rpt_index].state = NOPRED;
+                }   
+
+                break;
+            case NOPRED:
+
+                if (rpt[rpt_index].stride == new_stride) {
+                    rpt[rpt_index].state = TRANSIENT;
+                }
+
+                break;
+        }
+        // update the rest of the rpt
+        rpt[rpt_index].tag = pc;
+        rpt[rpt_index].stride = new_stride;
+        rpt[rpt_index].prev_addr = addr;
+
+        // make a prediction if this is not in the NOPRED state
+        if (rpt[rpt_index].state != NOPRED) {
+
+            // calculate the new address and align it to the beginning of the cache block
+            md_addr_t new_addr = addr + new_stride;
+            new_addr -= new_addr % cp->bsize;
+
+            // get the cache block for the current access
+            md_addr_t old_block = addr - ( addr % cp->bsize );
+
+            // if the new address is in a different cache block then do a prefetch
+            if ( new_addr != old_block ) {
+
+                cache_access(cp,	/* cache to access */
+    	             Read,		/* access type, Read or Write */
+    	             new_addr,		/* address of access */
+    	             NULL,		/* ptr to buffer for input/output */
+    	             cp->bsize,		/* number of bytes to access */
+    	             0,		        /* time of access */
+    	             NULL,		/* for return of user data ptr */
+    	             NULL,	        /* for address of replaced block */
+    	             1);
+
+            }
+
+        }
+    }
 }
 
+/* ECE552 Assignment 4 - END CODE*/
 
 /* cache x might generate a prefetch after a regular cache access to address addr */
 void generate_prefetch(struct cache_t *cp, md_addr_t addr) {
@@ -562,7 +674,6 @@ void generate_prefetch(struct cache_t *cp, md_addr_t addr) {
 
 }
 
-md_addr_t get_PC();
 
 /* print cache stats */
 void
