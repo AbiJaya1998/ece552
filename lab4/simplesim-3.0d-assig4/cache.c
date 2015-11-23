@@ -535,9 +535,6 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 	;
 }
 
-#define NUM_RTP_ENTRIES 1024
-#define TAG_MASK 0x1ff8
-
 typedef enum {
     INIT = 0,
     STEADY,
@@ -554,13 +551,23 @@ struct rpt_t {
      state_t state;
 };
 
-static rpt_t rpt[NUM_RTP_ENTRIES];
+static rpt_t *rpt;
+static unsigned int tag_mask;
 
 /* Stride Prefetcher */
 void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
+    assert(cp->prefetch_type > 2);
+
+    //we know it's for sure a stride prefetch
+    if(rpt == NULL){
+        rpt = (rpt_t*)malloc(cp->prefetch_type*sizeof(rpt_t));
+        tag_mask = (~(-1*cp->prefetch_type)) << 3;
+    }
+
+    
     // get tag
     md_addr_t pc = get_PC();
-    md_addr_t rpt_index = (pc & TAG_MASK) >> 3;
+    md_addr_t rpt_index = (pc & tag_mask) >> 3;
 
     // check current state of entry at tag
     //
