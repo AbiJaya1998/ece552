@@ -534,9 +534,9 @@ md_addr_t get_PC();
 
 // CZone Correlation prefetcher
 
-#define HIGHBITS 12
-#define HIGHMASK 0x000fff00
-#define HIGHOFFSET 8
+#define HIGHBITS 8
+#define HIGHMASK 0xff000000
+#define HIGHOFFSET 24
 #define INDEX_TBL_SIZE 1 << HIGHBITS
 
 #define PRE_FETCH_DEGREE 1
@@ -585,6 +585,7 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
             int i;
             for (i = 0; i < GHB_SIZE - 1; i++) {
                 ghb_table[i] = ghb_table[i + 1];
+                ghb_table[i].next--; // I can't belove I forgot this
             }
         }
         // update new ghb entry and index table linked list structure
