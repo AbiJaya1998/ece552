@@ -534,9 +534,9 @@ md_addr_t get_PC();
 
 // CZone Correlation prefetcher
 
-#define HIGHBITS 8
-#define HIGHMASK 0xff000000
-#define HIGHOFFSET 24
+#define HIGHBITS 12
+#define HIGHMASK 0x000fff00
+#define HIGHOFFSET 8
 #define INDEX_TBL_SIZE 1 << HIGHBITS
 
 #define PRE_FETCH_DEGREE 1
@@ -642,10 +642,63 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
 
             if ( memcmp(correlation_key, correlation_comp, 2) == 0 ) {
                 // were equal so time to do some prefetchen
-                
+
+                int degree_count = 0;
+                int delta_buffer_tail = dbufi;
+
+                md_addr_t new_addr = addr;
+
+                while (degree_count < PRE_FETCH_DEGREE) {
+
+                    // calculate the new address and align it to the beginning of the cache block
+                    new_addr += delta_buffer[dbufi];
+
+                    // loop around in th delta_buffer because this is a pattern and we add the 
+                    // deltas to addr and load cache lines up to PRE_FETCH_DEGREE
+                    if ( dbufi > 0 ) {
+                        dbufi--;
+                    }
+                    else {
+                        dbufi = delta_buffer_tail;
+                    }
+
+                    // calculate cache line address
+                    md_addr_t cache_addr = new_addr - (new_addr % cp->bsize);
+
+                    // is this cache line already in cache
+                    if ( cache_probe(cp, cache_addr) == 0 ) {
+                        cache_access(cp,	/* cache to access */
+                                Read,		/* access type, Read or Write */
+                                cache_addr,		/* address of access */
+                                NULL,		/* ptr to buffer for input/output */
+                                cp->bsize,		/* number of bytes to access */
+                                0,		        /* time of access */
+                                NULL,		/* for return of user data ptr */
+                                NULL,	        /* for address of replaced block */
+                                1);
+
+                        degree_count++;
+                    }
+
+                    return;
+                }
+
             }
 
             int delta = ghb_table[curr].address - ghb_table[prev].address;
+
+            // push into correlation comp
+            correlation_comp[0] = correlation_comp[1];
+            correlation_comp[1] = delta;
+       
+            // push to delta_buffer
+            delta_buffer[dbufi] = delta;
+            if (dbufi < DELTA_BUF_SIZE) {
+                dbufi++;
+            }
+            else {
+                return;
+            }
         }
 
         // update curr and prev
