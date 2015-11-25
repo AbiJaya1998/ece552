@@ -160,6 +160,12 @@ struct cache_t
   unsigned int hit_latency;	/* cache hit latency */
   int prefetch_type;		/* prefetcher type */
 
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+
+  int was_miss; // 0 or 1, true or false
+
+/* ECE552 Assignment 4 - END CODE*/
+
   /* miss/replacement handler, read/write BSIZE bytes starting at BADDR
      from/into cache block BLK, returns the latency of the operation
      if initiated at NOW, returned latencies indicate how long it takes

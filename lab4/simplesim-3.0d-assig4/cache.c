@@ -531,10 +531,132 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
 md_addr_t get_PC();
 
 /* Open Ended Prefetcher */
+
+// CZone Correlation prefetcher
+
+#define HIGHBITS 8
+#define HIGHMASK 0xff000000
+#define HIGHOFFSET 24
+#define INDEX_TBL_SIZE 1 << HIGHBITS
+
+#define PRE_FETCH_DEGREE 1
+
+#define GHB_SIZE 256
+
+#define DELTA_BUF_SIZE GHB_SIZE
+
+typedef struct ghb_table_t ghb_table_t;
+
+struct ghb_table_t {
+
+    md_addr_t address;
+    int next;
+
+};
+
+static unsigned int head_idx;
+
+static unsigned int index_table[INDEX_TBL_SIZE];
+
+static ghb_table_t ghb_table[GHB_SIZE];
+
+static int delta_buffer[DELTA_BUF_SIZE];
+
 void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	;
+
+    // initialize the index_table and ghb_table at the first call
+    if (head_idx == 0) {
+        int i;
+        for (i = 0; i < GHB_SIZE; i++) {
+            ghb_table[i].next = -1;
+        }
+        for (i = 0; i < INDEX_TBL_SIZE; i++) {
+            index_table[i] = -1;
+        }
+    }
+        
+    // the index in the index_table based on address
+    int indx = (addr & HIGHMASK) >> HIGHOFFSET;
+
+    // record miss addresses history
+    if (cp->was_miss) {
+        if (head_idx == GHB_SIZE - 1 && ghb_table[head_idx].address != 0) {
+            // shift everything if ghb is full
+            int i;
+            for (i = 0; i < GHB_SIZE - 1; i++) {
+                ghb_table[i] = ghb_table[i + 1];
+            }
+        }
+        // update new ghb entry and index table linked list structure
+        ghb_table[head_idx].address = addr;
+        ghb_table[head_idx].next = index_table[indx];
+        index_table[indx] = head_idx;
+
+        // increment head_idx if it isnt at the end yet
+        if (head_idx < GHB_SIZE - 1) {
+            head_idx++;
+        }
+    }
+
+    // now read the linked list and generate a prefetch if there is enough history and 
+    // a correlation is found
+
+    // make sure we have at least 4 node in linked list
+    int delta_count = 0;
+
+    int correlation_key[2];
+    int correlation_comp[2];
+
+    // start reading the linked list
+    int curr;
+    int prev;
+
+    // delta_buffer index tracker
+    int dbufi = 0;
+
+    // start at head of linked list
+    prev = index_table[indx];
+    curr = ghb_table[prev].next;
+
+    while (curr >= 0 && prev >= 0) {
+        
+        // correlation key filling
+        if (delta_count < 2) {
+            correlation_key[delta_count] = ghb_table[curr].address - ghb_table[prev].address;
+            delta_count++;
+        }
+        // correlation comp filling
+        else if (delta_count < 4) {
+            int delta = ghb_table[curr].address - ghb_table[prev].address;
+            correlation_comp[delta_count - 2] = delta;
+            delta_count++;
+
+            // push to delta_buffer
+            delta_buffer[dbufi] = delta;
+            dbufi++;
+        }
+        // keep pushing but also compare the correlation things
+        else {
+
+            // compare first
+
+            if ( memcmp(correlation_key, correlation_comp, 2) == 0 ) {
+                // were equal so time to do some prefetchen
+                
+            }
+
+            int delta = ghb_table[curr].address - ghb_table[prev].address;
+        }
+
+        // update curr and prev
+        prev = curr;
+        curr = ghb_table[curr].next;
+    }
+
 }
 
+
+/* Stride Prefetcher */
 typedef enum {
     INIT = 0,
     STEADY,
@@ -554,7 +676,6 @@ struct rpt_t {
 static rpt_t *rpt;
 static unsigned int tag_mask;
 
-/* Stride Prefetcher */
 void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
     assert(cp->prefetch_type > 2);
 
@@ -721,6 +842,13 @@ cache_access(struct cache_t *cp,	/* cache to access */
   md_addr_t set = CACHE_SET(cp, addr);
   md_addr_t bofs = CACHE_BLK(cp, addr);
   struct cache_blk_t *blk, *repl;
+
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+
+  cp->was_miss = 0;
+
+/* ECE552 Assignment 4 - END CODE*/
+
   int lat = 0;
 
   /* default replacement address */
@@ -778,6 +906,12 @@ cache_access(struct cache_t *cp,	/* cache to access */
   if (prefetch == 0 ) {
 
      cp->misses++;
+
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+
+     cp->was_miss = 1;
+
+/* ECE552 Assignment 4 - END CODE*/
 
      if (cmd == Read) {	
 	cp->read_misses++;
