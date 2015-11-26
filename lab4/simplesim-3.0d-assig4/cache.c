@@ -625,6 +625,10 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
         if (delta_count < 2) {
             correlation_key[delta_count] = ghb_table[curr].address - ghb_table[prev].address;
             delta_count++;
+
+            int delta = ghb_table[curr].address - ghb_table[prev].address;
+            delta_buffer[dbufi] = delta;
+            dbufi++;
         }
         // correlation comp filling
         else if (delta_count < 4) {
@@ -639,12 +643,24 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
         // keep pushing but also compare the correlation things
         else {
 
-            // compare first
+            int delta = ghb_table[curr].address - ghb_table[prev].address;
+            // push to delta_buffer
+            delta_buffer[dbufi] = delta;
+            if (dbufi < DELTA_BUF_SIZE) {
+                dbufi++;
+            }
+            else {
+                assert(0 && "how the shit did you get here");
+                return;
+            }
 
             if ( memcmp(correlation_key, correlation_comp, 2) == 0 ) {
                 // were equal so time to do some prefetchen
 
+                assert(dbufi >= 2);
+
                 int degree_count = 0;
+                dbufi--;
                 int delta_buffer_tail = dbufi;
 
                 md_addr_t new_addr = addr;
@@ -652,6 +668,7 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
                 while (degree_count < PRE_FETCH_DEGREE) {
 
                     // calculate the new address and align it to the beginning of the cache block
+                    assert (delta_buffer[0] != 0 || delta_buffer[1] != 0);
                     new_addr += delta_buffer[dbufi];
 
                     // loop around in th delta_buffer because this is a pattern and we add the 
@@ -662,6 +679,8 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
                     else {
                         dbufi = delta_buffer_tail;
                     }
+                
+                    //printf("%x\n", new_addr);
 
                     // calculate cache line address
                     md_addr_t cache_addr = new_addr - (new_addr % cp->bsize);
@@ -679,27 +698,19 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
                                 1);
 
                         degree_count++;
+                     
                     }
 
-                    return;
                 }
 
-            }
+                return;
 
-            int delta = ghb_table[curr].address - ghb_table[prev].address;
+            }
 
             // push into correlation comp
             correlation_comp[0] = correlation_comp[1];
             correlation_comp[1] = delta;
        
-            // push to delta_buffer
-            delta_buffer[dbufi] = delta;
-            if (dbufi < DELTA_BUF_SIZE) {
-                dbufi++;
-            }
-            else {
-                return;
-            }
         }
 
         // update curr and prev
