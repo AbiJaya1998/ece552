@@ -729,6 +729,10 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
     if(rpt == NULL){
         rpt = (rpt_t*)malloc(cp->prefetch_type*sizeof(rpt_t));
         tag_mask = (~(-1*cp->prefetch_type)) << 3;
+        int i;
+        for(i = 0; i < cp->prefetch_type; i++){
+            rpt[i].tag = 0;
+        }
     }
 
     
@@ -744,6 +748,7 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
         rpt[rpt_index].prev_addr = addr;
         rpt[rpt_index].stride = 0;
         rpt[rpt_index].state = INIT;
+        return;
     }
     // already there, check states
     else {
@@ -791,21 +796,21 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
         }
         // update the rest of the rpt
         rpt[rpt_index].tag = pc;
-        rpt[rpt_index].stride = new_stride;
         rpt[rpt_index].prev_addr = addr;
+        if((new_stride != rpt[rpt_index].stride) && rpt[rpt_index].state != INIT){
+            rpt[rpt_index].stride = new_stride;
+        }
 
         // make a prediction if this is not in the NOPRED state
         if (rpt[rpt_index].state != NOPRED) {
 
             // calculate the new address and align it to the beginning of the cache block
-            md_addr_t new_addr = addr + new_stride;
+            md_addr_t new_addr = rpt[rpt_index].prev_addr + rpt[rpt_index].stride;
             new_addr -= new_addr % cp->bsize;
 
-            // get the cache block for the current access
-            md_addr_t old_block = addr - ( addr % cp->bsize );
-
             // if the new address is in a different cache block then do a prefetch
-            if ( new_addr != old_block ) {
+            // It's a miss!
+            if ( cache_probe(cp, new_addr) == 0 ) {
 
                 cache_access(cp,	/* cache to access */
     	             Read,		/* access type, Read or Write */
