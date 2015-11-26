@@ -516,18 +516,19 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
     md_addr_t new_addr = addr + cp->bsize;
     new_addr -= new_addr % cp->bsize;
 
-    cache_access(cp,	        /* cache to access */
-	     Read,		/* access type, Read or Write */
-	     new_addr,		/* address of access */
-	     NULL,		/* ptr to buffer for input/output */
-	     cp->bsize,		/* number of bytes to access */
-	     0,		        /* time of access */
-	     NULL,		/* for return of user data ptr */
-	     NULL,	        /* for address of replaced block */
-	     1);
+    if(cache_probe(cp, new_addr) == 0){
 
+        cache_access(cp,	        /* cache to access */
+	                 Read,		/* access type, Read or Write */
+	                 new_addr,		/* address of access */
+	                 NULL,		/* ptr to buffer for input/output */
+	                 cp->bsize,		/* number of bytes to access */
+	                 0,		        /* time of access */
+	                 NULL,		/* for return of user data ptr */
+	                 NULL,	        /* for address of replaced block */
+	                 1);
+    }
 }
-
 md_addr_t get_PC();
 
 /* Open Ended Prefetcher */
