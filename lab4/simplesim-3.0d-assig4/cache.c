@@ -530,11 +530,6 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
 
 md_addr_t get_PC();
 
-/* Open Ended Prefetcher */
-void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	;
-}
-
 typedef enum {
     INIT = 0,
     STEADY,
@@ -550,6 +545,208 @@ struct rpt_t {
      int stride;
      state_t state;
 };
+
+static rpt_t *oe_rpt;
+static unsigned int oe_tag_mask;
+
+#define RPT_SIZE 16
+#define HISTORY_SIZE 8
+
+// will initialize one array for every rpt entry and the array length will be 2*HISTORY_SIZE 
+// it will be used in halfs for each history list
+
+struct history_t_s {
+    // will point at the active history_list
+    int* activelist_head;
+    int index;
+    int* history_list_one;
+    int* history_list_two;
+    int can_compare; // will be 0 until the first time that both history buffers have recorded something
+};
+
+typedef struct history_t_s history_t;
+
+static history_t *stride_history;
+
+// modified stride prefetching where we push in the stride into a history buffer for each rpt index
+// the goal is to try and make a prefetch in the NOPRED state. 
+// always put the stride into the history buffer for the given address
+// the first time you get to the NOPRED state, {FIRST_CHECK} mark this and start pushing history onto a different history buffer
+// for the same address. The next time you get to NOPRED, compare each history buffer to see if they are the same. 
+// if they are the same then we have a stride pattern to use to do a prefetch.
+// else start recording new history by overwriting the first history buffer and repeating from {FIRST_CHECK}
+
+/* Open Ended Prefetcher */
+void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
+   
+    // in this case we can make our own rpt size
+    if(oe_rpt == NULL){
+        //oe_rpt = (rpt_t*)malloc(cp->prefetch_type*sizeof(rpt_t));
+        oe_rpt = (rpt_t*)malloc(RPT_SIZE*sizeof(rpt_t));
+        oe_tag_mask = (~(-1*RPT_SIZE)) << 3;
+
+        // initialize history lists
+        stride_history = (history_t*)malloc(RPT_SIZE*sizeof(stride_history));
+        int i;
+        for (i = 0; i < RPT_SIZE; i++){
+            stride_history[i].history_list_one = (int*)malloc(HISTORY_SIZE*sizeof(int));
+            stride_history[i].history_list_two = (int*)malloc(HISTORY_SIZE*sizeof(int));
+            stride_history[i].activelist_head = stride_history[i].history_list_one;
+            stride_history[i].index = 0;
+            stride_history[i].can_compare = 0;
+        }
+    }
+    
+    // get tag
+    md_addr_t pc = get_PC();
+    md_addr_t rpt_index = (pc & oe_tag_mask) >> 3;
+
+    // check current state of entry at tag
+    //
+    // if it does not exist yet
+    if (oe_rpt[rpt_index].tag == 0) {
+        oe_rpt[rpt_index].tag = pc;
+        oe_rpt[rpt_index].prev_addr = addr;
+        oe_rpt[rpt_index].stride = 0;
+        oe_rpt[rpt_index].state = INIT;
+    }
+    // already there, check states
+    else {
+        // get the new stride
+        int new_stride;
+        new_stride = addr - oe_rpt[rpt_index].prev_addr;
+
+        // push new stride onto the active history buffer for rpt_index
+        history_t* tmp_his_list = &stride_history[rpt_index];
+        tmp_his_list->activelist_head[tmp_his_list->index] = new_stride;
+
+        tmp_his_list->index++;
+        // if we hit the end of the history buffer then just start overwriting old history
+        if (tmp_his_list->index = HISTORY_SIZE) {
+            tmp_his_list->index = 0;
+        }
+
+        // move state depending on current state
+        switch (oe_rpt[rpt_index].state) {
+            case INIT:
+
+                if (oe_rpt[rpt_index].stride == new_stride) {
+                    oe_rpt[rpt_index].state = STEADY;
+                }
+                else {
+                    oe_rpt[rpt_index].state = TRANSIENT;
+                }   
+
+                break;
+
+            case STEADY:
+
+                if (oe_rpt[rpt_index].stride != new_stride) {
+                    oe_rpt[rpt_index].state = INIT;
+                }
+
+                break;
+            case TRANSIENT:
+
+                if (oe_rpt[rpt_index].stride == new_stride) {
+                    oe_rpt[rpt_index].state = STEADY;
+                }
+                else {
+                    oe_rpt[rpt_index].state = NOPRED;
+                }   
+
+                break;
+            case NOPRED:
+
+                if (oe_rpt[rpt_index].stride == new_stride) {
+                    oe_rpt[rpt_index].state = TRANSIENT;
+                }
+
+                break;
+        }
+
+        // now attempt to make a prefetch in NOPRED state based on history of strides
+        if (oe_rpt[rpt_index].state == NOPRED) {
+            // compare each history buffer and if there is a match then do a prefetch
+            // after that swap the active history buffer to start recording new history
+
+            // if a pattern was detected then generate a prefetch on the new stride
+            if (tmp_his_list->can_compare) {
+                if (memcmp(tmp_his_list->history_list_one, tmp_his_list->history_list_two, HISTORY_SIZE) == 0) {
+                    //printf("got here!\n");
+                    // calculate the new address and align it to the beginning of the cache block
+                    md_addr_t new_addr = addr + new_stride;
+                    new_addr -= new_addr % cp->bsize;
+
+                    // get the cache block for the current access
+                    //md_addr_t old_block = addr - ( addr % cp->bsize );
+
+                    // if the new address is in a different cache block then do a prefetch
+                    if ( cache_probe(cp, new_addr) == 0 ) {
+                        //if ( new_addr != old_block ) {
+
+                        cache_access(cp,	/* cache to access */
+                                Read,		/* access type, Read or Write */
+                                new_addr,		/* address of access */
+                                NULL,		/* ptr to buffer for input/output */
+                                cp->bsize,		/* number of bytes to access */
+                                0,		        /* time of access */
+                                NULL,		/* for return of user data ptr */
+                                NULL,	        /* for address of replaced block */
+                                1);
+
+                    }
+
+                }
+            }
+
+            // swap activelist_head
+            if (tmp_his_list->activelist_head == tmp_his_list->history_list_one) {
+                tmp_his_list->activelist_head = tmp_his_list->history_list_two;
+                tmp_his_list->can_compare = 1; // since the first activelist_head is one, set this hear to say we have recorded in both lists
+            }
+            else {
+                tmp_his_list->activelist_head = tmp_his_list->history_list_one;
+            }
+
+            tmp_his_list->index = 0;
+
+        }
+
+
+        // make a prediction if this is not in the NOPRED state
+        if (oe_rpt[rpt_index].state != NOPRED) {
+
+            // calculate the new address and align it to the beginning of the cache block
+            md_addr_t new_addr = addr + oe_rpt[rpt_index].stride;
+            new_addr -= new_addr % cp->bsize;
+
+            // get the cache block for the current access
+            //md_addr_t old_block = addr - ( addr % cp->bsize );
+
+            // if the new address is in a different cache block then do a prefetch
+            if ( cache_probe(cp, new_addr) == 0 ) {
+            //if ( new_addr != old_block ) {
+
+                cache_access(cp,	/* cache to access */
+    	             Read,		/* access type, Read or Write */
+    	             new_addr,		/* address of access */
+    	             NULL,		/* ptr to buffer for input/output */
+    	             cp->bsize,		/* number of bytes to access */
+    	             0,		        /* time of access */
+    	             NULL,		/* for return of user data ptr */
+    	             NULL,	        /* for address of replaced block */
+    	             1);
+
+            }
+
+        }
+        // update the rest of the oe_rpt
+        oe_rpt[rpt_index].tag = pc;
+        oe_rpt[rpt_index].stride = new_stride;
+        oe_rpt[rpt_index].prev_addr = addr;
+    }
+}
 
 static rpt_t *rpt;
 static unsigned int tag_mask;
@@ -622,23 +819,20 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
 
                 break;
         }
-        // update the rest of the rpt
-        rpt[rpt_index].tag = pc;
-        rpt[rpt_index].stride = new_stride;
-        rpt[rpt_index].prev_addr = addr;
 
         // make a prediction if this is not in the NOPRED state
         if (rpt[rpt_index].state != NOPRED) {
 
             // calculate the new address and align it to the beginning of the cache block
-            md_addr_t new_addr = addr + new_stride;
+            md_addr_t new_addr = addr + rpt[rpt_index].stride;
             new_addr -= new_addr % cp->bsize;
 
             // get the cache block for the current access
-            md_addr_t old_block = addr - ( addr % cp->bsize );
+            //md_addr_t old_block = addr - ( addr % cp->bsize );
 
             // if the new address is in a different cache block then do a prefetch
-            if ( new_addr != old_block ) {
+            if ( cache_probe(cp, new_addr) == 0 ) {
+            //if ( new_addr != old_block ) {
 
                 cache_access(cp,	/* cache to access */
     	             Read,		/* access type, Read or Write */
@@ -653,6 +847,10 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
             }
 
         }
+        // update the rest of the rpt
+        rpt[rpt_index].tag = pc;
+        rpt[rpt_index].stride = new_stride;
+        rpt[rpt_index].prev_addr = addr;
     }
 }
 
