@@ -534,9 +534,10 @@ md_addr_t get_PC();
 
 // CZone Correlation prefetcher
 
-#define HIGHBITS 12
-#define HIGHMASK 0x000fff00
-#define HIGHOFFSET 8
+#define HIGHBITS 8
+#define HIGHMASK 0xff000000
+#define LOWMASK  0x00ffffff
+#define HIGHOFFSET 24
 #define INDEX_TBL_SIZE 1 << HIGHBITS
 
 #define PRE_FETCH_DEGREE 1
@@ -554,7 +555,7 @@ struct ghb_table_t {
 
 };
 
-static unsigned int head_idx;
+static unsigned int head_idx, inited;
 
 static unsigned int index_table[INDEX_TBL_SIZE];
 
@@ -563,41 +564,51 @@ static ghb_table_t ghb_table[GHB_SIZE];
 static int delta_buffer[DELTA_BUF_SIZE];
 
 void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
-
     // initialize the index_table and ghb_table at the first call
-    if (head_idx == 0) {
+    if (inited == 0) {
         int i;
         for (i = 0; i < GHB_SIZE; i++) {
+            ghb_table[i].address = addr & LOWMASK;
             ghb_table[i].next = -1;
         }
         for (i = 0; i < INDEX_TBL_SIZE; i++) {
             index_table[i] = -1;
         }
+
+        inited = 1;
     }
         
     // the index in the index_table based on address
     int indx = (addr & HIGHMASK) >> HIGHOFFSET;
-
     // record miss addresses history
-    if (cp->was_miss) {
-        if (head_idx == GHB_SIZE - 1 && ghb_table[head_idx].address != 0) {
-            // shift everything if ghb is full
-            int i;
-            for (i = 0; i < GHB_SIZE - 1; i++) {
-                ghb_table[i] = ghb_table[i + 1];
+    if (head_idx == (GHB_SIZE - 1) && ghb_table[head_idx].address != 0) {
+        // shift everything if ghb is full
+        int i;
+        
+        for (i = 0; i < INDEX_TBL_SIZE; i++) {
+            if(index_table[i] != -1){
+                index_table[i] = index_table[i]-1;
             }
         }
-        // update new ghb entry and index table linked list structure
-        ghb_table[head_idx].address = addr;
-        ghb_table[head_idx].next = index_table[indx];
-        index_table[indx] = head_idx;
-
-        // increment head_idx if it isnt at the end yet
-        if (head_idx < GHB_SIZE - 1) {
-            head_idx++;
+        for (i = 0; i < (GHB_SIZE - 1); i++) {
+            ghb_table[i] = ghb_table[i + 1];
+            ghb_table[i].next--;
         }
     }
+    // update new ghb entry and index table linked list structure
+    ghb_table[head_idx].address = addr;
+    ghb_table[head_idx].next = index_table[indx];
+   
+    printf("GHB Table entry has address:%d and next:%d\n",ghb_table[head_idx].address,ghb_table[head_idx].next);
+    //Update the beginning of the linked list for this index.
+    index_table[indx] = head_idx;
 
+    //printf("At index %d, the head index is %d\n", indx, index_table[indx]);
+    
+    // increment head_idx if it isnt at the end yet
+    if (head_idx < (GHB_SIZE - 1)) {
+        head_idx++;
+    }
     // now read the linked list and generate a prefetch if there is enough history and 
     // a correlation is found
 
@@ -607,107 +618,89 @@ void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
     int correlation_key[2];
     int correlation_comp[2];
 
-    // start reading the linked list
-    int curr;
-    int prev;
-
     // delta_buffer index tracker
     int dbufi = 0;
 
     // start at head of linked list
-    prev = index_table[indx];
-    curr = ghb_table[prev].next;
+    int prev = index_table[indx];
+    int curr = ghb_table[prev].next;
 
-    while (curr >= 0 && prev >= 0) {
-        
-        // correlation key filling
-        if (delta_count < 2) {
-            correlation_key[delta_count] = ghb_table[curr].address - ghb_table[prev].address;
-            delta_count++;
+    while (curr >= 0 && prev >= 0 && curr != prev){
+        if(head_idx < 3){
+            return;
         }
-        // correlation comp filling
-        else if (delta_count < 4) {
-            int delta = ghb_table[curr].address - ghb_table[prev].address;
-            correlation_comp[delta_count - 2] = delta;
-            delta_count++;
-
-            // push to delta_buffer
-            delta_buffer[dbufi] = delta;
-            dbufi++;
-        }
-        // keep pushing but also compare the correlation things
-        else {
-
-            // compare first
-
-            if ( memcmp(correlation_key, correlation_comp, 2) == 0 ) {
-                // were equal so time to do some prefetchen
-
-                int degree_count = 0;
-                int delta_buffer_tail = dbufi;
-
+        int delta = ghb_table[prev].address - ghb_table[curr].address;
+        //assert(delta != 0);
+        //Let's evaluate if we need a prefetch
+        if(delta_count > 3){
+            //Hey we have a match, let's step through and prefetch
+            /*
+            if(memcmp(correlation_comp, correlation_key, 2) == 0){
+                dbufi-=3;
+                int dbuf_tail = dbufi;
+                int degree = 0;
                 md_addr_t new_addr = addr;
-
-                while (degree_count < PRE_FETCH_DEGREE) {
-
-                    // calculate the new address and align it to the beginning of the cache block
+                while(degree < PRE_FETCH_DEGREE){
                     new_addr += delta_buffer[dbufi];
-
-                    // loop around in th delta_buffer because this is a pattern and we add the 
-                    // deltas to addr and load cache lines up to PRE_FETCH_DEGREE
-                    if ( dbufi > 0 ) {
+                    md_addr_t cache_addr = new_addr - (new_addr % cp->bsize);
+                    //The new address is not in the current cache block
+                    if(cache_probe(cp, cache_addr) == 0){
+                        cache_access(cp, Read, cache_addr, NULL, cp->bsize, 0, NULL, NULL, 1);
+                        degree++;
+                    }
+                    if(dbufi > 0){
                         dbufi--;
                     }
-                    else {
-                        dbufi = delta_buffer_tail;
+                    //dbufi is equal to 0 reset
+                    else{
+                        dbufi = dbuf_tail; 
                     }
-
-                    // calculate cache line address
+                }
+                return;   
+            }*/
+        }
+        if(delta_count < 2){
+            //constant stride
+            if(delta_count == 1 && (delta == correlation_key[0])){
+                int degree = 0;
+                md_addr_t new_addr = addr;
+                while(degree < PRE_FETCH_DEGREE){
+                    new_addr += delta;
                     md_addr_t cache_addr = new_addr - (new_addr % cp->bsize);
-
-                    // is this cache line already in cache
-                    if ( cache_probe(cp, cache_addr) == 0 ) {
-                        cache_access(cp,	/* cache to access */
-                                Read,		/* access type, Read or Write */
-                                cache_addr,		/* address of access */
-                                NULL,		/* ptr to buffer for input/output */
-                                cp->bsize,		/* number of bytes to access */
-                                0,		        /* time of access */
-                                NULL,		/* for return of user data ptr */
-                                NULL,	        /* for address of replaced block */
-                                1);
-
-                        degree_count++;
+                    //The new address is not in the current cache block
+                    if(cache_probe(cp, cache_addr) == 0){
+                        cache_access(cp, Read, cache_addr, NULL, cp->bsize, 0, NULL, NULL, 1);
+                        degree++;
                     }
-
-                    return;
+                    //printf("are we returning fam?\n\n");
                 }
 
+                return;  
             }
-
-            int delta = ghb_table[curr].address - ghb_table[prev].address;
-
-            // push into correlation comp
-            correlation_comp[0] = correlation_comp[1];
-            correlation_comp[1] = delta;
-       
-            // push to delta_buffer
-            delta_buffer[dbufi] = delta;
-            if (dbufi < DELTA_BUF_SIZE) {
-                dbufi++;
-            }
-            else {
-                return;
-            }
+            correlation_key[delta_count] = delta;
         }
+        correlation_comp[0] = correlation_comp[1];
+        correlation_comp[1] = delta;
+        
+        delta_buffer[dbufi] = delta;
+
+        //printf("delta: %d\n", delta_buffer[dbufi]);
+        
+        if(dbufi < DELTA_BUF_SIZE-1){
+            dbufi++;
+        }
+        else{
+            return;
+        }
+        delta_count++;
 
         // update curr and prev
         prev = curr;
         curr = ghb_table[curr].next;
+
     }
-
+    return;
 }
-
 
 /* Stride Prefetcher */
 typedef enum {
@@ -1109,7 +1102,11 @@ cache_access(struct cache_t *cp,	/* cache to access */
     *udata = blk->user_data;
 
   if (prefetch == 0) {	/* only regular cache accesses can generate a prefetch */
-	generate_prefetch(cp, addr);
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+    if(cp->prefetch_type != 2){
+	    generate_prefetch(cp, addr);
+    }
+/* ECE552 Assignment 4 - END CODE*/	
   }
 
 
@@ -1155,7 +1152,11 @@ cache_access(struct cache_t *cp,	/* cache to access */
   cp->last_blk = blk;
 
   if (prefetch == 0) {	/* only regular cache accesses can generate a prefetch */
-     generate_prefetch(cp, addr);
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+     if(cp->prefetch_type != 2){
+        generate_prefetch(cp, addr);
+     }
+/* ECE552 Assignment 4 - END CODE*/	
   }
 
   /* return first cycle data is available to access */
