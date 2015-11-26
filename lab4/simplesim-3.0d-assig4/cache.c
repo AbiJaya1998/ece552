@@ -530,9 +530,157 @@ void next_line_prefetcher(struct cache_t *cp, md_addr_t addr) {
 
 md_addr_t get_PC();
 
+typedef struct index_table_t index_table_t;
+
+struct index_table_t {
+
+    int delta;
+    int index;
+
+};
+
+typedef struct ghb_t ghb_t;
+
+struct ghb_t {
+
+    md_addr_t address;
+    int next;
+
+};
+
+#define INDEX_TABLE_SIZE 5
+#define GHB_SIZE 32
+
+static index_table_t i_table[INDEX_TABLE_SIZE];
+static int i_head;
+
+static ghb_t ghb[GHB_SIZE];
+static int init; // has been initiated?
+
+static ghb_head;
+
+static md_addr_t prev_addr;
+
 /* Open Ended Prefetcher */
 void open_ended_prefetcher(struct cache_t *cp, md_addr_t addr) {
-	;
+    
+    if (!init) {
+        int i;
+        for (i = 0; i < INDEX_TABLE_SIZE; i++) {
+            i_table[i].index = -1;
+        }
+        for (i = 0; i < GHB_SIZE; i++) {
+            ghb[i].next = -1;
+        }
+        prev_addr = addr;
+
+        init = 1;
+
+        return;
+    }
+
+    int delta = addr - prev_addr;
+    prev_addr = addr;
+    //printf("%d\n", delta);
+
+    // if addr was a miss addr then put in in history
+    if (cp->was_miss) {
+        //printf("append miss addr");
+        // put this delta into the i_table if it isnt already there, oldest one is evicted 
+        int t;
+        for (t = 0; t < INDEX_TABLE_SIZE; t++) {
+            if (i_table[t].delta = delta) {
+                break;
+            }
+            if (t == INDEX_TABLE_SIZE) {
+                t = i_head;
+                i_table[t].delta = delta;
+                i_table[t].index = -1;
+                i_head++;
+                if (i_head > INDEX_TABLE_SIZE) {
+                    i_head = 0;
+                }
+                break;
+            }
+        }
+
+        // if ghb is full then shift everthing back
+        if (ghb_head = GHB_SIZE - 1) {
+
+            int i;
+            for (i = 0; i < GHB_SIZE; i++) {
+                ghb[i] = ghb[i + 1];
+                ghb[i].next--;
+            }
+
+            for (i = 0; i < INDEX_TABLE_SIZE; i++) {
+                i_table[i].index--;
+            }
+
+        }
+
+        ghb[ghb_head].address = addr;
+        ghb[ghb_head].next = i_table[t].index;
+        i_table[t].index = ghb_head;
+
+        if (ghb_head < GHB_SIZE - 1) {
+            ghb_head++;
+        }
+    }
+
+    // check if the calculated delta is in the index table
+    int t;
+    for (t = 0; t < INDEX_TABLE_SIZE; t++) {
+        if (i_table[t].delta = delta) {
+            break;
+        }
+    }
+
+    int f;
+    for (f = 0; f < INDEX_TABLE_SIZE; f++) {
+        int fi = i_table[f].index;
+        if (fi >= 0) {
+            while (fi >= 0) {
+                if (fi + 1 < GHB_SIZE) {
+                    printf("%d\n", ghb[fi + 1].address - ghb[fi].address);
+                }
+                fi = ghb[fi].next;
+            }
+        }
+    }
+
+    // found it, so next step is to see if there is enough history to calculate some deltas with
+    if ( t < INDEX_TABLE_SIZE ) {
+
+        // check the second node in the linked list if there is one
+        int prev_index = ghb[i_table[t].index].next;
+        if (prev_index >= 0) {
+            // there is one so use it to calculate delta with the very next address
+            int new_delta;
+            new_delta = ghb[prev_index + 1].address - ghb[prev_index].address;
+
+            // now use this delta to generate an address for a prefetch
+            // calculate the new address and align it to the beginning of the cache block
+            md_addr_t new_addr = addr + new_delta;
+            new_addr -= new_addr % cp->bsize;
+
+            // if the new address is in a different cache block then do a prefetch
+            if ( cache_probe(cp, new_addr) == 0 ) {
+
+                cache_access(cp,	/* cache to access */
+                        Read,		/* access type, Read or Write */
+                        new_addr,		/* address of access */
+                        NULL,		/* ptr to buffer for input/output */
+                        cp->bsize,		/* number of bytes to access */
+                        0,		        /* time of access */
+                        NULL,		/* for return of user data ptr */
+                        NULL,	        /* for address of replaced block */
+                        1);
+
+            }
+        }
+
+    }
 }
 
 typedef enum {
@@ -622,23 +770,17 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
 
                 break;
         }
-        // update the rest of the rpt
-        rpt[rpt_index].tag = pc;
-        rpt[rpt_index].stride = new_stride;
-        rpt[rpt_index].prev_addr = addr;
 
         // make a prediction if this is not in the NOPRED state
         if (rpt[rpt_index].state != NOPRED) {
 
+            // now use this delta to generate an address for a prefetch
             // calculate the new address and align it to the beginning of the cache block
-            md_addr_t new_addr = addr + new_stride;
+            md_addr_t new_addr = addr + rpt[rpt_index].stride;
             new_addr -= new_addr % cp->bsize;
 
-            // get the cache block for the current access
-            md_addr_t old_block = addr - ( addr % cp->bsize );
-
             // if the new address is in a different cache block then do a prefetch
-            if ( new_addr != old_block ) {
+            if ( cache_probe(cp, new_addr) == 0 ) {
 
                 cache_access(cp,	/* cache to access */
     	             Read,		/* access type, Read or Write */
@@ -653,6 +795,10 @@ void stride_prefetcher(struct cache_t *cp, md_addr_t addr) {
             }
 
         }
+        // update the rest of the rpt
+        rpt[rpt_index].tag = pc;
+        rpt[rpt_index].stride = new_stride;
+        rpt[rpt_index].prev_addr = addr;
     }
 }
 
@@ -723,6 +869,10 @@ cache_access(struct cache_t *cp,	/* cache to access */
   struct cache_blk_t *blk, *repl;
   int lat = 0;
 
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+  cp->was_miss = 0;
+/* ECE552 Assignment 4 - END CODE*/
+
   /* default replacement address */
   if (repl_addr)
     *repl_addr = 0;
@@ -778,6 +928,10 @@ cache_access(struct cache_t *cp,	/* cache to access */
   if (prefetch == 0 ) {
 
      cp->misses++;
+
+/* ECE552 Assignment 4 - BEGIN CODE*/	
+  cp->was_miss = 1;
+/* ECE552 Assignment 4 - END CODE*/
 
      if (cmd == Read) {	
 	cp->read_misses++;
