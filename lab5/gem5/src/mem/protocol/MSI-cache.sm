@@ -635,6 +635,7 @@ machine(L1Cache, "MSI L1 Cache")
       //DPRINTF(RubySlicc, "IS_D NA,DO to S");
       u_writeDataToCache;
       w_deallocateTBE;
+      rx_load_hit;
       n_popResponseQueue;
   }
 
@@ -658,6 +659,13 @@ machine(L1Cache, "MSI L1 Cache")
       n_popResponseQueue;
   }
 
+  transition(IM_A, Inv_Ack_all, M){
+      q_updateAckCount;
+      w_deallocateTBE;
+      sx_store_hit;
+      n_popResponseQueue;
+  }
+
   transition(IM_AD, Data_from_Dir_Ack_Cnt, IM_A) {
       //DPRINTF(RubySlicc, "IM_AD Dac to IM_A");
       q_updateAckCount;
@@ -678,13 +686,14 @@ machine(L1Cache, "MSI L1 Cache")
       u_writeDataToCache;
       q_updateAckCount;
       w_deallocateTBE;
+      sx_store_hit;
       n_popResponseQueue;
   }
 
   transition(S, Store, SM_AD) {
       //DPRINTF(RubySlicc, "S S to SM_AD");
       v_allocateTBE;
-      i_allocateL1CacheBlock;
+      //i_allocateL1CacheBlock;
       p_profileMiss;
       am_issueGetM;
       m_popMandatoryQueue;
@@ -724,7 +733,7 @@ machine(L1Cache, "MSI L1 Cache")
   transition(SM_AD, { Data_from_Dir_No_Acks, Data_from_Owner }, M) {
       //DPRINTF(RubySlicc, "SM_AD M");
       u_writeDataToCache;
-      rx_load_hit;
+      sx_store_hit;
       w_deallocateTBE;
       n_popResponseQueue;
   }
@@ -733,7 +742,7 @@ machine(L1Cache, "MSI L1 Cache")
       //DPRINTF(RubySlicc, "SM_AD SM_A");
       q_updateAckCount;
       u_writeDataToCache;
-      rx_load_hit;
+      sx_store_hit;
       n_popResponseQueue;
   }
 
@@ -747,7 +756,7 @@ machine(L1Cache, "MSI L1 Cache")
       //DPRINTF(RubySlicc, "SM_A M");
       q_updateAckCount;
       u_writeDataToCache;
-      rx_load_hit;
+      sx_store_hit;
       w_deallocateTBE;
       n_popResponseQueue;
   }
