@@ -1,3 +1,3 @@
 #!/bin/bash
 
-./build/ALPHA/gem5.opt --debug-flags=ProtocolTrace,RubySlicc ./configs/example/ruby_random_test.py -n 2 --num-dirs 1 -m 100000
+./build/ALPHA/gem5.opt --debug-flags=ProtocolTrace,RubySlicc ./configs/example/ruby_random_test.py -n 16 --num-dirs 1 -m 1000000
