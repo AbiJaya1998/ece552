@@ -616,7 +616,7 @@ machine(L1Cache, "MSI L1 Cache")
   // =============================================================================
 
   /* ECE552: Complete this section here */
-  /* ECE552 Lab 5: Assignment BEGIN */
+  /* ECE552 Assignment 5 - BEGIN CODE */
   transition(I, {Load, Ifetch} , IS_D) {
       v_allocateTBE;
       i_allocateL1CacheBlock;
@@ -625,6 +625,13 @@ machine(L1Cache, "MSI L1 Cache")
       m_popMandatoryQueue;
   }
 
+  transition(IS_D, { Data_from_Dir_No_Acks, Data_from_Owner }, S) {
+      u_writeDataToCache;
+      rx_load_hit;
+      w_deallocateTBE;
+      n_popResponseQueue;
+  }
+  
   transition(I, Store, IM_AD) {
       i_allocateL1CacheBlock;
       v_allocateTBE;
@@ -638,12 +645,6 @@ machine(L1Cache, "MSI L1 Cache")
     o_popForwardedRequestQueue;
   }
 
-  transition(IS_D, { Data_from_Dir_No_Acks, Data_from_Owner }, S) {
-      u_writeDataToCache;
-      rx_load_hit;
-      w_deallocateTBE;
-      n_popResponseQueue;
-  }
   transition({SM_AD, IM_AD}, {Data_from_Dir_No_Acks, Data_from_Owner}, M) {
       u_writeDataToCache;
       sx_store_hit;
@@ -665,11 +666,6 @@ machine(L1Cache, "MSI L1 Cache")
       n_popResponseQueue;
   }
   
-  transition({IM_AD, IM_A, SM_AD, SM_A}, Inv_Ack) {
-      q_updateAckCount;
-      n_popResponseQueue;
-  }
-  
   transition({IM_A, SM_A}, Inv_Ack_all, M){
       q_updateAckCount;
       sx_store_hit;
@@ -677,9 +673,9 @@ machine(L1Cache, "MSI L1 Cache")
       n_popResponseQueue;
   }
   
-  transition({ S, SM_AD, SM_A, M }, {Load, Ifetch} ) {
-      r_load_hit;
-      m_popMandatoryQueue;
+  transition({IM_AD, IM_A, SM_AD, SM_A}, Inv_Ack) {
+      q_updateAckCount;
+      n_popResponseQueue;
   }
   
   transition(S, Store, SM_AD) {
@@ -701,6 +697,11 @@ machine(L1Cache, "MSI L1 Cache")
       h_deallocateL1CacheBlock;
       forward_eviction_to_cpu;
       o_popForwardedRequestQueue;
+  }
+  
+  transition({ S, SM_AD, SM_A, M }, {Load, Ifetch} ) {
+      r_load_hit;
+      m_popMandatoryQueue;
   }
   
   transition(SM_AD, Inv, IM_AD) {
@@ -769,52 +770,24 @@ machine(L1Cache, "MSI L1 Cache")
       o_popForwardedRequestQueue;
   }
 
+  /* The transitions below include the states and events that result in STALLS*/
+
   transition(IS_D, { Load, Store, Replacement, Inv } ) {
-      //DPRINTF(RubySlicc, "IS_D L,S,R,I");
       z_stall;
   }
 
-
-
   transition({IM_AD, IM_A}, { Load, Store, Replacement, Fwd_GetS, Fwd_GetM } ) {
-      //DPRINTF(RubySlicc, "IM_AD or IM_A L,S,R,Fgs,Fgm");
       z_stall;
   }
 
 
   transition({ SM_AD, SM_A }, { Store, Replacement, Fwd_GetS, Fwd_GetM }) {
-      //DPRINTF(RubySlicc, "SM_AD or SM_A S,R,Fgs,Fgm");
       z_stall;
   }
+  
   transition({ MI_A, SI_A, II_A }, { Load, Store, Replacement }) {
-      //DPRINTF(RubySlicc, "MI_A or SI_A or II_A");
       z_stall;
   }
   /* ECE552 Lab 5: Assignment END */
-
-
-
-  /*transition(SM_AD, { Data_from_Dir_No_Acks, Data_from_Owner }, M) {
-      //DPRINTF(RubySlicc, "SM_AD M");
-      u_writeDataToCache;
-      sx_store_hit;
-      w_deallocateTBE;
-      n_popResponseQueue;
-  }*/
-
-
- /* transition({ SM_AD, SM_A }, Inv_Ack) {
-      //DPRINTF(RubySlicc, "SM_AD or SM_A");
-      q_updateAckCount;
-      n_popResponseQueue;
-  }*/
-
-
-
-
-
-
-
-
 
 }

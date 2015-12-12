@@ -40,9 +40,10 @@ machine(Directory, "Directory protocol")
 
     I, AccessPermission:Invalid, desc="Not Present/Invalid";
     S, AccessPermission:Read_Only, desc="Shared";
+    
+    /* ECE552 Assignment 5 - BEGIN CODE */
+    
     M, AccessPermission:Read_Write, desc="Modified";
-
-    /* ECE552: Complete this section here */
 
     //========================
     //ECE552: Transient States
@@ -53,7 +54,8 @@ machine(Directory, "Directory protocol")
     IM_D, AccessPermission:Busy, desc="Waiting for memory fetch";
 
     MI_A, AccessPermission:Busy, desc="Waiting for memory writeback ack";
-    /* ECE552: Complete this section here */
+    
+    /* ECE552 Assignment 5 - END CODE */
   }
 
   // =============================================================================
@@ -544,6 +546,7 @@ getDirectoryEntry(address).Sharers);
 
   /* ECE552: Complete this section here */
 
+  /* ECE552 Assignment 5 - BEGIN CODE */
     transition(I, GETS, S) {
         ars2_addRequestorToSharers;
         ds_sendSharedData;
@@ -678,4 +681,5 @@ getDirectoryEntry(address).Sharers);
         w_deallocateTBE;
         qm_popMemQueue;
     }
+  /* ECE552 Assignment 5 - END CODE */
 }
