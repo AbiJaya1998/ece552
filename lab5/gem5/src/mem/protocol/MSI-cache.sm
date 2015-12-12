@@ -616,9 +616,8 @@ machine(L1Cache, "MSI L1 Cache")
   // =============================================================================
 
   /* ECE552: Complete this section here */
- 
+  /* ECE552 Lab 5: Assignment BEGIN */
   transition(I, {Load, Ifetch} , IS_D) {
-      //DPRINTF(RubySlicc, "I L to IS_D");
       v_allocateTBE;
       i_allocateL1CacheBlock;
       p_profileMiss;
@@ -626,198 +625,196 @@ machine(L1Cache, "MSI L1 Cache")
       m_popMandatoryQueue;
   }
 
+  transition(I, Store, IM_AD) {
+      i_allocateL1CacheBlock;
+      v_allocateTBE;
+      p_profileMiss;
+      am_issueGetM;
+      m_popMandatoryQueue;
+  }
+  
+  transition(I, Inv){
+    fi_sendInvAck;
+    o_popForwardedRequestQueue;
+  }
+
+  transition(IS_D, { Data_from_Dir_No_Acks, Data_from_Owner }, S) {
+      u_writeDataToCache;
+      rx_load_hit;
+      w_deallocateTBE;
+      n_popResponseQueue;
+  }
+  transition({SM_AD, IM_AD}, {Data_from_Dir_No_Acks, Data_from_Owner}, M) {
+      u_writeDataToCache;
+      sx_store_hit;
+      w_deallocateTBE;
+      n_popResponseQueue;
+  }
+  
+  transition(IM_AD, Data_from_Dir_Ack_Cnt, IM_A) {
+      q_updateAckCount;
+      u_writeDataToCache;
+      n_popResponseQueue;
+  }
+  
+  transition(IM_AD, Data_from_Dir_Ack_Cnt_Last, M) {
+      u_writeDataToCache;
+      q_updateAckCount;
+      w_deallocateTBE;
+      sx_store_hit;
+      n_popResponseQueue;
+  }
+  
+  transition({IM_AD, IM_A, SM_AD, SM_A}, Inv_Ack) {
+      q_updateAckCount;
+      n_popResponseQueue;
+  }
+  
+  transition({IM_A, SM_A}, Inv_Ack_all, M){
+      q_updateAckCount;
+      sx_store_hit;
+      w_deallocateTBE;
+      n_popResponseQueue;
+  }
+  
+  transition({ S, SM_AD, SM_A, M }, {Load, Ifetch} ) {
+      r_load_hit;
+      m_popMandatoryQueue;
+  }
+  
+  transition(S, Store, SM_AD) {
+      v_allocateTBE;
+      p_profileMiss;
+      am_issueGetM;
+      x_copyDataFromCacheToTBE;
+      m_popMandatoryQueue;
+  }
+  
+  transition(S, Replacement, SI_A) {
+      v_allocateTBE;
+      x_copyDataFromCacheToTBE;
+      bs_issuePUTS;
+  }
+  
+  transition(S, Inv, I) {
+      fi_sendInvAck;
+      h_deallocateL1CacheBlock;
+      forward_eviction_to_cpu;
+      o_popForwardedRequestQueue;
+  }
+  
+  transition(SM_AD, Inv, IM_AD) {
+      fi_sendInvAck;
+      o_popForwardedRequestQueue;
+  }
+  
+  transition(SM_AD, Data_from_Dir_Ack_Cnt, SM_A) {
+      q_updateAckCount;
+      u_writeDataToCache;
+      n_popResponseQueue;
+  }
+  
+  transition(SM_AD, Data_from_Dir_Ack_Cnt_Last, M) {
+      q_updateAckCount;
+      u_writeDataToCache;
+      sx_store_hit;
+      w_deallocateTBE;
+      n_popResponseQueue;
+  }
+  
+  transition(M, Store) {
+      s_store_hit;
+      m_popMandatoryQueue;
+  }
+  
+  transition(M, Replacement, MI_A) {
+      v_allocateTBE;
+      bm_issuePUTM;
+      x_copyDataFromCacheToTBE;
+  }
+  
+  transition(M, Fwd_GetS, S) {
+      e_sendDataFromCacheToRequestor;
+      de_sendDataFromCacheToDir;
+      o_popForwardedRequestQueue;
+  }
+  
+  transition(M, Fwd_GetM, I) {
+      e_sendDataFromCacheToRequestor;
+      forward_eviction_to_cpu;
+      h_deallocateL1CacheBlock;
+      o_popForwardedRequestQueue;
+  }
+  
+  transition(MI_A, Fwd_GetS, SI_A) {
+      ee_sendDataFromTBEToRequestor;
+      dee_sendDataFromTBEToDir;
+      o_popForwardedRequestQueue;
+  }
+  
+  transition(MI_A, Fwd_GetM, II_A) {
+      ee_sendDataFromTBEToRequestor;
+      o_popForwardedRequestQueue;
+  }
+  
+  transition({ MI_A, SI_A, II_A }, WB_Ack, I) {
+      h_deallocateL1CacheBlock;
+      w_deallocateTBE;
+      forward_eviction_to_cpu;
+      o_popForwardedRequestQueue;
+  }
+
+  transition(SI_A, Inv, II_A) {
+      fi_sendInvAck;
+      o_popForwardedRequestQueue;
+  }
+
   transition(IS_D, { Load, Store, Replacement, Inv } ) {
       //DPRINTF(RubySlicc, "IS_D L,S,R,I");
       z_stall;
   }
 
-  transition(IS_D, { Data_from_Dir_No_Acks, Data_from_Owner }, S) {
-      //DPRINTF(RubySlicc, "IS_D NA,DO to S");
-      u_writeDataToCache;
-      w_deallocateTBE;
-      rx_load_hit;
-      n_popResponseQueue;
-  }
 
-  transition(I, Store, IM_AD) {
-      //DPRINTF(RubySlicc, "I S to IM_AD");
-      v_allocateTBE;
-      i_allocateL1CacheBlock;
-      p_profileMiss;
-      am_issueGetM;
-      m_popMandatoryQueue;
-  }
 
   transition({IM_AD, IM_A}, { Load, Store, Replacement, Fwd_GetS, Fwd_GetM } ) {
       //DPRINTF(RubySlicc, "IM_AD or IM_A L,S,R,Fgs,Fgm");
       z_stall;
   }
 
-  transition({IM_AD, IM_A}, Inv_Ack) {
-      //DPRINTF(RubySlicc, "IM_AD or IM_A Ia");
-      q_updateAckCount;
-      n_popResponseQueue;
-  }
-
-  transition(IM_A, Inv_Ack_all, M){
-      q_updateAckCount;
-      w_deallocateTBE;
-      sx_store_hit;
-      n_popResponseQueue;
-  }
-
-  transition(IM_AD, Data_from_Dir_Ack_Cnt, IM_A) {
-      //DPRINTF(RubySlicc, "IM_AD Dac to IM_A");
-      q_updateAckCount;
-      u_writeDataToCache;
-      sx_store_hit;
-      n_popResponseQueue;
-  }
-
-  transition(IM_AD, {Data_from_Dir_No_Acks, Data_from_Owner}, M) {
-      u_writeDataToCache;
-      sx_store_hit;
-      w_deallocateTBE;
-      n_popResponseQueue;
-  }
-
-  transition(IM_A, Data_from_Dir_Ack_Cnt_Last, M) {
-      //DPRINTF(RubySlicc, "IM_A Dacl to M");
-      u_writeDataToCache;
-      q_updateAckCount;
-      w_deallocateTBE;
-      sx_store_hit;
-      n_popResponseQueue;
-  }
-
-  transition(S, Store, SM_AD) {
-      //DPRINTF(RubySlicc, "S S to SM_AD");
-      v_allocateTBE;
-      //i_allocateL1CacheBlock;
-      p_profileMiss;
-      am_issueGetM;
-      m_popMandatoryQueue;
-  }
-
-  transition(S, Replacement, SI_A) {
-      //DPRINTF(RubySlicc, "S R to SI_A");
-      v_allocateTBE;
-      forward_eviction_to_cpu;
-      bs_issuePUTS;
-  }
-
-  transition(S, Inv, I) {
-      //DPRINTF(RubySlicc, "S I to I");
-      h_deallocateL1CacheBlock;
-      fi_sendInvAck;
-      o_popForwardedRequestQueue;
-  }
-
-  transition({ S, SM_AD, SM_A, M }, {Load, Ifetch} ) {
-      //DPRINTF(RubySlicc, "SM_AD or SM_A L");
-      r_load_hit;
-      m_popMandatoryQueue;
-  }
 
   transition({ SM_AD, SM_A }, { Store, Replacement, Fwd_GetS, Fwd_GetM }) {
       //DPRINTF(RubySlicc, "SM_AD or SM_A S,R,Fgs,Fgm");
       z_stall;
   }
-
-  transition(SM_AD, Inv, IM_AD) {
-      //DPRINTF(RubySlicc, "SM_AD I IM_AD");
-      fi_sendInvAck;
-      o_popForwardedRequestQueue;
+  transition({ MI_A, SI_A, II_A }, { Load, Store, Replacement }) {
+      //DPRINTF(RubySlicc, "MI_A or SI_A or II_A");
+      z_stall;
   }
+  /* ECE552 Lab 5: Assignment END */
 
-  transition(SM_AD, { Data_from_Dir_No_Acks, Data_from_Owner }, M) {
+
+
+  /*transition(SM_AD, { Data_from_Dir_No_Acks, Data_from_Owner }, M) {
       //DPRINTF(RubySlicc, "SM_AD M");
       u_writeDataToCache;
       sx_store_hit;
       w_deallocateTBE;
       n_popResponseQueue;
-  }
+  }*/
 
-  transition(SM_AD, Data_from_Dir_Ack_Cnt, SM_A) {
-      //DPRINTF(RubySlicc, "SM_AD SM_A");
-      q_updateAckCount;
-      u_writeDataToCache;
-      sx_store_hit;
-      n_popResponseQueue;
-  }
 
-  transition({ SM_AD, SM_A }, Inv_Ack) {
+ /* transition({ SM_AD, SM_A }, Inv_Ack) {
       //DPRINTF(RubySlicc, "SM_AD or SM_A");
       q_updateAckCount;
       n_popResponseQueue;
-  }
+  }*/
 
-  transition(SM_A, Data_from_Dir_Ack_Cnt_Last, M) {
-      //DPRINTF(RubySlicc, "SM_A M");
-      q_updateAckCount;
-      u_writeDataToCache;
-      sx_store_hit;
-      w_deallocateTBE;
-      n_popResponseQueue;
-  }
 
-  transition(M, Store) {
-      //DPRINTF(RubySlicc, "M with St");
-      s_store_hit;
-      m_popMandatoryQueue;
-  }
 
-  transition(M, Replacement, MI_A) {
-      //DPRINTF(RubySlicc, "M MI_A");
-      v_allocateTBE;
-      forward_eviction_to_cpu;
-      x_copyDataFromCacheToTBE;
-      bm_issuePUTM;
-      de_sendDataFromCacheToDir;
-  }
 
-  transition(M, Fwd_GetS, S) {
-      //DPRINTF(RubySlicc, "M S");
-      e_sendDataFromCacheToRequestor;
-      de_sendDataFromCacheToDir;
-      o_popForwardedRequestQueue;
-  }
 
-  transition(M, Fwd_GetM, I) {
-      //DPRINTF(RubySlicc, "M I");
-      e_sendDataFromCacheToRequestor;
-      h_deallocateL1CacheBlock;
-      o_popForwardedRequestQueue;
-  }
 
-  transition({ MI_A, SI_A, II_A }, { Load, Store, Replacement }) {
-      //DPRINTF(RubySlicc, "MI_A or SI_A or II_A");
-      z_stall;
-  }
 
-  transition(MI_A, Fwd_GetS, SI_A) {
-      //DPRINTF(RubySlicc, "MI_A SI_A");
-      ee_sendDataFromTBEToRequestor;
-      dee_sendDataFromTBEToDir;
-      o_popForwardedRequestQueue;
-  }
 
-  transition(MI_A, Fwd_GetM, II_A) {
-      //DPRINTF(RubySlicc, "MI_A II_A");
-      ee_sendDataFromTBEToRequestor;
-      o_popForwardedRequestQueue;
-  }
 
-  transition({ MI_A, SI_A, II_A }, WB_Ack, I) {
-      //DPRINTF(RubySlicc, "MI_A or SI_A or II_A to I");
-      h_deallocateL1CacheBlock;
-      w_deallocateTBE;
-      o_popForwardedRequestQueue;
-  }
-
-  transition(SI_A, Inv, II_A) {
-      //DPRINTF(RubySlicc, "SI_A II_A");
-      fi_sendInvAck;
-      o_popForwardedRequestQueue;
-  }
 }
